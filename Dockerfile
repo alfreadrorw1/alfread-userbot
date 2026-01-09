@@ -23,10 +23,6 @@ COPY . .
 RUN useradd -m -u 1000 userbot && chown -R userbot:userbot /app
 USER userbot
 
-# Expose port (Railway akan mengatur PORT environment variable)
-ENV PORT=8080
-EXPOSE $PORT
-
 # Health check untuk Railway
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import sys; sys.exit(0)"

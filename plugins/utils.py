@@ -5,7 +5,6 @@ Helper functions yang digunakan oleh berbagai plugin
 
 import logging
 from datetime import datetime
-from telethon import events
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -47,6 +46,7 @@ async def reply_success(event, message):
 
 async def delete_message_after(event, seconds):
     """Hapus pesan setelah beberapa detik"""
+    import asyncio
     await asyncio.sleep(seconds)
     try:
         await event.delete()
