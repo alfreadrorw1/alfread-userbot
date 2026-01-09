@@ -228,6 +228,12 @@ async def register_plugin(bot_client):
         
         await handle_password(bot_client, event, user_id)
     
+    # Test handler - INI HARUS DI DALAM register_plugin!
+    @bot_client.on(events.NewMessage(pattern='^\.test$'))
+    async def test_handler(event):
+        """Test handler"""
+        await event.reply("✅ Bot berfungsi dengan baik!")
+    
     logger.info("✅ Connect plugin loaded")
 
 async def process_phone_login(bot_client, event, user_id, phone):
@@ -476,9 +482,3 @@ async def start_userbot_client(client):
         await client.run_until_disconnected()
     except Exception as e:
         logger.error(f"Error in userbot client: {e}")
-
-# Handler untuk testing
-@bot_client.on(events.NewMessage(pattern='^\.test$'))
-async def test_handler(event):
-    """Test handler"""
-    await event.reply("✅ Bot berfungsi dengan baik!")
