@@ -1,15 +1,2 @@
 # Dependensi utama
 telethon
-pytgcalls
-requests
-beautifulsoup4
-Pillow
-colorlog
-aiohttp
-yt-dlp
-asyncio
-python-ffmpeg
-instaloader
-selenium
-webdriver-manager
-googletrans==4.0.0-rc1
