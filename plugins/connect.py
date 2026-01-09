@@ -9,7 +9,7 @@ from telethon import TelegramClient, events, errors, Button
 from telethon.tl.types import MessageEntityPhone
 from config import Config
 from plugins.utils import is_owner
-from plugins.mongodb import save_user_session, get_user_session
+from plugins.mongodb import save_user_session, get_user_session, disconnect_user_session
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +20,11 @@ pending_logins = {}  # {owner_id: login_data}
 async def register_plugin(bot_client):
     """Register plugin connect"""
     
-    @bot_client.on(events.NewMessage(pattern=r'^\.connect$', outgoing=True))
+    @bot_client.on(events.NewMessage(pattern=r'^/connect$', outgoing=False))
     async def connect_handler(event):
-        """Command .connect untuk menghubungkan user account"""
+        """Command /connect untuk menghubungkan user account"""
+        
+        logger.info(f"Received /connect command from {event.sender_id}")
         
         if not await is_owner(event):
             await event.reply("❌ Hanya owner yang bisa menggunakan command ini!")
@@ -35,25 +37,27 @@ async def register_plugin(bot_client):
             try:
                 if await user_clients[owner_id].is_user_authorized():
                     await event.reply("✅ Anda sudah terhubung sebagai user!\n\n"
-                                     "Gunakan `.disconnect` untuk memutuskan koneksi.")
+                                     "Gunakan `/disconnect` untuk memutuskan koneksi.")
                     return
             except:
                 pass
         
         # Minta nomor telepon
-        await event.reply("📱 **Hubungkan Akun User**\n\n"
-                         "Silakan kirim nomor telepon Anda dalam format internasional:\n"
-                         "Contoh: `+6281234567890`\n\n"
-                         "Atau gunakan tombol di bawah untuk membagikan kontak:",
-                         buttons=[
-                             [Button.request_phone("📱 Bagikan Nomor", resize=True)],
-                             [Button.inline("❌ Batal", b"cancel_login")]
-                         ])
+        message = await event.reply("📱 **Hubungkan Akun User**\n\n"
+                                   "Silakan kirim nomor telepon Anda dalam format internasional:\n"
+                                   "Contoh: `+6281234567890`\n\n"
+                                   "Atau gunakan tombol di bawah untuk membagikan kontak:",
+                                   buttons=[
+                                       [Button.request_phone("📱 Bagikan Nomor", resize=True)],
+                                       [Button.inline("❌ Batal", b"cancel_login")]
+                                   ])
         
         pending_logins[owner_id] = {
             'state': 'awaiting_phone',
-            'bot_event': event
+            'bot_event': event,
+            'message_id': message.id
         }
+        logger.info(f"Added pending login for owner {owner_id}")
     
     @bot_client.on(events.CallbackQuery(pattern=b"cancel_login"))
     async def cancel_login_handler(event):
@@ -64,6 +68,7 @@ async def register_plugin(bot_client):
             del pending_logins[owner_id]
             await event.answer("✅ Login dibatalkan")
             await event.delete()
+            logger.info(f"Cancelled login for owner {owner_id}")
         else:
             await event.answer("❌ Tidak ada login yang aktif")
     
@@ -72,21 +77,28 @@ async def register_plugin(bot_client):
         """Handle shared phone contact"""
         owner_id = event.sender_id
         
+        logger.info(f"Received contact from {owner_id}")
+        
         if owner_id not in pending_logins:
+            logger.info(f"No pending login for {owner_id}")
             return
         
         if pending_logins[owner_id]['state'] != 'awaiting_phone':
+            logger.info(f"Wrong state: {pending_logins[owner_id]['state']}")
             return
         
         contact = event.message.contact
         if contact.user_id == owner_id:
             phone_number = f"+{contact.phone_number}"
+            logger.info(f"Processing phone: {phone_number}")
             await process_phone_number(owner_id, phone_number, event)
     
-    @bot_client.on(events.NewMessage(pattern=r'^\+[\d\s\-]+$', outgoing=True))
+    @bot_client.on(events.NewMessage(pattern=r'^\+[\d\s\-]+$', outgoing=False))
     async def phone_number_handler(event):
         """Handle manual phone number input"""
         owner_id = event.sender_id
+        
+        logger.info(f"Received phone number from {owner_id}: {event.raw_text}")
         
         if owner_id not in pending_logins:
             return
@@ -100,6 +112,8 @@ async def register_plugin(bot_client):
     async def process_phone_number(owner_id, phone_number, event):
         """Proses nomor telepon untuk login"""
         try:
+            logger.info(f"Processing phone number for {owner_id}: {phone_number}")
+            
             # Buat session string yang unik
             session_name = f"user_session_{owner_id}"
             
@@ -115,9 +129,11 @@ async def register_plugin(bot_client):
             
             # Koneksikan client
             await user_client.connect()
+            logger.info(f"User client connected for {owner_id}")
             
             # Kirim kode OTP
             sent_code = await user_client.send_code_request(phone_number)
+            logger.info(f"OTP sent to {phone_number}")
             
             pending_logins[owner_id].update({
                 'state': 'awaiting_code',
@@ -131,17 +147,20 @@ async def register_plugin(bot_client):
                              "Silakan kirim kode OTP yang diterima (format: `12345`):")
             
         except errors.PhoneNumberInvalidError:
+            logger.error(f"Invalid phone number: {phone_number}")
             await event.reply("❌ **Nomor telepon tidak valid!**\n\n"
                              "Pastikan format internasional (contoh: +6281234567890)")
             if owner_id in pending_logins:
                 del pending_logins[owner_id]
         
         except errors.PhoneNumberBannedError:
+            logger.error(f"Banned phone number: {phone_number}")
             await event.reply("❌ **Nomor telepon diblokir oleh Telegram!**")
             if owner_id in pending_logins:
                 del pending_logins[owner_id]
         
         except errors.PhoneNumberFloodError:
+            logger.error(f"Phone flood error: {phone_number}")
             await event.reply("⚠️ **Terlalu banyak permintaan!**\n\n"
                              "Tunggu beberapa saat sebelum mencoba lagi.")
             if owner_id in pending_logins:
@@ -151,17 +170,23 @@ async def register_plugin(bot_client):
             logger.error(f"Error sending code: {e}")
             await event.reply(f"❌ **Error:** {str(e)}")
             if owner_id in pending_logins:
+                if 'user_client' in pending_logins[owner_id]:
+                    await pending_logins[owner_id]['user_client'].disconnect()
                 del pending_logins[owner_id]
     
-    @bot_client.on(events.NewMessage(pattern=r'^\d{5}$', outgoing=True))
+    @bot_client.on(events.NewMessage(pattern=r'^\d{5}$', outgoing=False))
     async def otp_handler(event):
         """Handle OTP code"""
         owner_id = event.sender_id
         
+        logger.info(f"Received OTP from {owner_id}: {event.raw_text}")
+        
         if owner_id not in pending_logins:
+            logger.info(f"No pending login for OTP: {owner_id}")
             return
         
         if pending_logins[owner_id]['state'] != 'awaiting_code':
+            logger.info(f"Wrong state for OTP: {pending_logins[owner_id]['state']}")
             return
         
         otp_code = event.raw_text.strip()
@@ -169,6 +194,7 @@ async def register_plugin(bot_client):
         
         try:
             # Sign in dengan OTP
+            logger.info(f"Signing in with OTP for {owner_id}")
             await login_data['user_client'].sign_in(
                 phone=login_data['phone_number'],
                 code=otp_code,
@@ -195,24 +221,28 @@ async def register_plugin(bot_client):
                              f"👤 **User:** {me.first_name}\n"
                              f"📱 **Phone:** `{login_data['phone_number']}`\n"
                              f"🆔 **ID:** `{me.id}`\n\n"
-                             f"✅ **Sekarang Anda bisa menggunakan command `.ping`!**")
+                             f"✅ **Sekarang Anda bisa menggunakan command `/ping`!**")
             
             # Hapus dari pending
             del pending_logins[owner_id]
+            logger.info(f"Login successful for {owner_id}")
             
         except errors.SessionPasswordNeededError:
             # Butuh 2FA password
+            logger.info(f"2FA required for {owner_id}")
             pending_logins[owner_id]['state'] = 'awaiting_2fa'
             await event.reply("🔐 **Diperlukan 2FA Password**\n\n"
                              "Silakan kirim password 2FA Anda:")
         
         except errors.PhoneCodeInvalidError:
+            logger.error(f"Invalid OTP for {owner_id}")
             await event.reply("❌ **Kode OTP salah!**\n\n"
                              "Silakan coba lagi:")
         
         except errors.PhoneCodeExpiredError:
+            logger.error(f"Expired OTP for {owner_id}")
             await event.reply("❌ **Kode OTP kadaluarsa!**\n\n"
-                             "Gunakan `.connect` lagi untuk memulai ulang.")
+                             "Gunakan `/connect` lagi untuk memulai ulang.")
             if owner_id in pending_logins:
                 if 'user_client' in pending_logins[owner_id]:
                     await pending_logins[owner_id]['user_client'].disconnect()
@@ -226,10 +256,12 @@ async def register_plugin(bot_client):
                     await pending_logins[owner_id]['user_client'].disconnect()
                 del pending_logins[owner_id]
     
-    @bot_client.on(events.NewMessage(pattern=r'^[\w\d@#$%^&*()!]{6,}$', outgoing=True))
+    @bot_client.on(events.NewMessage(pattern=r'^[\w\d@#$%^&*()!]{6,}$', outgoing=False))
     async def twofa_handler(event):
         """Handle 2FA password"""
         owner_id = event.sender_id
+        
+        logger.info(f"Received 2FA password from {owner_id}")
         
         if owner_id not in pending_logins:
             return
@@ -242,6 +274,7 @@ async def register_plugin(bot_client):
         
         try:
             # Sign in dengan password 2FA
+            logger.info(f"Signing in with 2FA for {owner_id}")
             await login_data['user_client'].sign_in(password=password)
             
             # Dapatkan session string
@@ -264,17 +297,18 @@ async def register_plugin(bot_client):
                              f"👤 **User:** {me.first_name}\n"
                              f"📱 **Phone:** `{login_data['phone_number']}`\n"
                              f"🆔 **ID:** `{me.id}`\n\n"
-                             f"✅ **Sekarang Anda bisa menggunakan command `.ping`!**")
+                             f"✅ **Sekarang Anda bisa menggunakan command `/ping`!**")
             
             # Hapus dari pending
             del pending_logins[owner_id]
+            logger.info(f"2FA login successful for {owner_id}")
             
         except Exception as e:
             logger.error(f"Error 2FA: {e}")
             await event.reply(f"❌ **Password 2FA salah!**\n\n"
                              "Silakan coba lagi:")
     
-    @bot_client.on(events.NewMessage(pattern=r'^\.disconnect$', outgoing=True))
+    @bot_client.on(events.NewMessage(pattern=r'^/disconnect$', outgoing=False))
     async def disconnect_handler(event):
         """Disconnect user session"""
         if not await is_owner(event):
@@ -288,18 +322,18 @@ async def register_plugin(bot_client):
                 del user_clients[owner_id]
                 
                 # Update MongoDB
-                from plugins.mongodb import disconnect_user_session
                 disconnect_user_session(owner_id)
                 
                 await event.reply("✅ **Disconnected!**\n\n"
                                  "Sesi user telah diputuskan.")
+                logger.info(f"Disconnected user session for {owner_id}")
             except Exception as e:
                 logger.error(f"Error disconnecting: {e}")
                 await event.reply(f"❌ **Error:** {str(e)}")
         else:
             await event.reply("ℹ️ **Tidak ada koneksi aktif**")
     
-    @bot_client.on(events.NewMessage(pattern=r'^\.session$', outgoing=True))
+    @bot_client.on(events.NewMessage(pattern=r'^/session$', outgoing=False))
     async def session_handler(event):
         """Cek status session"""
         if not await is_owner(event):
@@ -312,7 +346,8 @@ async def register_plugin(bot_client):
                 me = await user_clients[owner_id].get_me()
                 status = "✅ **Connected**"
                 user_info = f"👤 **User:** {me.first_name}\n🆔 **ID:** `{me.id}`"
-            except:
+            except Exception as e:
+                logger.error(f"Error getting user info: {e}")
                 status = "❌ **Disconnected**"
                 user_info = ""
         else:
@@ -321,4 +356,4 @@ async def register_plugin(bot_client):
         
         await event.reply(f"🔍 **Session Status**\n\n{status}\n{user_info}")
     
-    logger.info("✅ Connect plugin loaded")
+    logger.info("✅ Connect plugin loaded (prefix: /)")

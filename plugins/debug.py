@@ -15,9 +15,11 @@ logger = logging.getLogger(__name__)
 async def register_plugin(client):
     """Register plugin debug"""
     
-    @client.on(events.NewMessage(pattern=r'^\.debug$'))
+    @client.on(events.NewMessage(pattern=r'^/debug$', outgoing=False))
     async def handler(event):
-        """Command .debug untuk melihat info system"""
+        """Command /debug untuk melihat info system"""
+        
+        logger.info(f"Received /debug command from {event.sender_id}")
         
         # Get system info
         python_version = sys.version
@@ -54,23 +56,25 @@ async def register_plugin(client):
         
         await event.reply(debug_info)
     
-    @client.on(events.NewMessage(pattern=r'^\.help$'))
+    @client.on(events.NewMessage(pattern=r'^/help$', outgoing=False))
     async def help_handler(event):
-        """Command .help untuk bantuan"""
+        """Command /help untuk bantuan"""
+        
+        logger.info(f"Received /help command from {event.sender_id}")
         
         help_text = """
 📖 **Alfread UserBot Commands**
 
 **Basic Commands:**
 • `/start` - Start bot dan menu utama
-• `.ping` - Test bot latency
-• `.debug` - System debug information
-• `.help` - Show this help message
+• `/ping` - Test bot latency
+• `/debug` - System debug information
+• `/help` - Show this help message
 
 **UserBot Commands (Owner Only):**
-• Kirim nomor telepon untuk connect
-• `.session <string>` - Connect dengan session string
-• `.cancel` - Cancel login process
+• `/connect` - Connect user account to bot
+• `/disconnect` - Disconnect user account
+• `/session` - Check session status
 
 **Plugin System:**
 • Modular plugin architecture
@@ -80,4 +84,4 @@ async def register_plugin(client):
         
         await event.reply(help_text)
     
-    logger.info("✅ Debug plugin loaded")
+    logger.info("✅ Debug plugin loaded (prefix: /)")

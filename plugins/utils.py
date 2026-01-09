@@ -11,7 +11,10 @@ logger = logging.getLogger(__name__)
 
 async def is_owner(event):
     """Cek apakah user adalah owner"""
-    return event.sender_id == Config.OWNER_ID
+    try:
+        return event.sender_id == Config.OWNER_ID
+    except:
+        return False
 
 def format_time(dt=None):
     """Format waktu menjadi string"""
