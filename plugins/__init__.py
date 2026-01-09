@@ -32,7 +32,9 @@ async def load_plugins(client):
                 module_name = item.stem
                 
                 try:
-                    # Import module
+                    logger.info(f"🔄 Loading plugin: {module_name}")
+                    
+                    # Import module menggunakan importlib
                     spec = importlib.util.spec_from_file_location(
                         f"plugins.{module_name}", 
                         str(item)
@@ -44,7 +46,12 @@ async def load_plugins(client):
                     
                     module = importlib.util.module_from_spec(spec)
                     sys.modules[f"plugins.{module_name}"] = module
-                    spec.loader.exec_module(module)
+                    
+                    try:
+                        spec.loader.exec_module(module)
+                    except Exception as e:
+                        logger.error(f"❌ Error executing module {module_name}: {e}")
+                        continue
                     
                     # Jika module memiliki fungsi 'register_plugin'
                     if hasattr(module, 'register_plugin'):
@@ -57,10 +64,16 @@ async def load_plugins(client):
                     else:
                         logger.warning(f"⚠️ Module {module_name} tidak memiliki register_plugin function")
                         
+                except ImportError as e:
+                    logger.error(f"❌ Import error for plugin {module_name}: {e}")
                 except Exception as e:
-                    logger.error(f"❌ Failed to load plugin {module_name}: {e}")
+                    logger.error(f"❌ Unexpected error loading plugin {module_name}: {e}")
         
-        logger.info(f"📦 Total {len(loaded_plugins)} plugin loaded: {', '.join(loaded_plugins)}")
+        if loaded_plugins:
+            logger.info(f"📦 Total {len(loaded_plugins)} plugin loaded: {', '.join(loaded_plugins)}")
+        else:
+            logger.warning("⚠️ No plugins were loaded successfully!")
+            
         return loaded_plugins
         
     except Exception as e:

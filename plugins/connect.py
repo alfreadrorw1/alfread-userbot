@@ -13,9 +13,6 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
-# Import MongoDB helper functions
-from plugins.mongodb import save_user_session, get_user_session, disconnect_user_session
-
 # Global variable untuk menyimpan clients yang aktif
 active_userbots = {}
 pending_logins = {}
@@ -250,8 +247,21 @@ async def process_session_string(bot_client, event, user_id, session_string):
             await userbot_client.disconnect()
             return
         
-        # Simpan session ke database (sync function)
-        save_user_session(user_id, session_string, "session_string")
+        # Simpan session ke database menggunakan MongoDB class
+        from plugins.mongodb import MongoDB
+        collection = MongoDB.get_collection("user_sessions")
+        
+        collection.update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "session_string": session_string,
+                "phone": "session_string",
+                "connected_at": datetime.now(),
+                "updated_at": datetime.now(),
+                "connected": True
+            }},
+            upsert=True
+        )
         
         # Simpan di memory
         active_userbots[user_id] = userbot_client
@@ -293,8 +303,21 @@ async def handle_otp_code(bot_client, event, user_id):
             # Success - dapatkan session string
             session_string = userbot_client.session.save()
             
-            # Simpan ke database (sync function)
-            save_user_session(user_id, session_string, data['phone'])
+            # Simpan ke database menggunakan MongoDB class
+            from plugins.mongodb import MongoDB
+            collection = MongoDB.get_collection("user_sessions")
+            
+            collection.update_one(
+                {"user_id": user_id},
+                {"$set": {
+                    "session_string": session_string,
+                    "phone": data['phone'],
+                    "connected_at": datetime.now(),
+                    "updated_at": datetime.now(),
+                    "connected": True
+                }},
+                upsert=True
+            )
             
             # Simpan di memory
             active_userbots[user_id] = userbot_client
@@ -361,8 +384,22 @@ async def handle_password(bot_client, event, user_id):
         # Success - dapatkan session string
         session_string = userbot_client.session.save()
         
-        # Simpan ke database (sync function)
-        save_user_session(user_id, session_string, data['phone'])
+        # Simpan ke database menggunakan MongoDB class
+        from plugins.mongodb import MongoDB
+        collection = MongoDB.get_collection("user_sessions")
+        
+        collection.update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "session_string": session_string,
+                "phone": data['phone'],
+                "connected_at": datetime.now(),
+                "updated_at": datetime.now(),
+                "connected": True,
+                "has_2fa": True
+            }},
+            upsert=True
+        )
         
         # Simpan di memory
         active_userbots[user_id] = userbot_client

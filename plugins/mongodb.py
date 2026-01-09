@@ -3,6 +3,7 @@ MongoDB Connection Handler untuk Alfread UserBot
 """
 
 import logging
+from datetime import datetime
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from config import Config
@@ -60,6 +61,71 @@ class MongoDB:
         return cls._db
     
     @classmethod
+    def get_collection(cls, collection_name):
+        """Dapatkan collection instance"""
+        db = cls.get_database()
+        return db[collection_name]
+    
+    @classmethod
+    def save_user_session(cls, user_id, session_string, phone=None):
+        """Simpan session user ke MongoDB"""
+        try:
+            collection = cls.get_collection("user_sessions")
+            result = collection.update_one(
+                {"user_id": user_id},
+                {"$set": {
+                    "session_string": session_string,
+                    "phone": phone,
+                    "updated_at": datetime.now(),
+                    "connected": True
+                }},
+                upsert=True
+            )
+            return result.acknowledged
+        except Exception as e:
+            logger.error(f"Error saving session: {e}")
+            return False
+    
+    @classmethod
+    def get_user_session(cls, user_id):
+        """Dapatkan session user dari MongoDB"""
+        try:
+            collection = cls.get_collection("user_sessions")
+            session = collection.find_one({"user_id": user_id})
+            return session.get("session_string") if session else None
+        except Exception as e:
+            logger.error(f"Error getting session: {e}")
+            return None
+    
+    @classmethod
+    def disconnect_user_session(cls, user_id):
+        """Mark session sebagai disconnected"""
+        try:
+            collection = cls.get_collection("user_sessions")
+            result = collection.update_one(
+                {"user_id": user_id},
+                {"$set": {
+                    "connected": False,
+                    "disconnected_at": datetime.now()
+                }}
+            )
+            return result.acknowledged
+        except Exception as e:
+            logger.error(f"Error disconnecting session: {e}")
+            return False
+    
+    @classmethod
+    def get_active_sessions(cls):
+        """Dapatkan semua session yang aktif"""
+        try:
+            collection = cls.get_collection("user_sessions")
+            active = list(collection.find({"connected": True}))
+            return active
+        except Exception as e:
+            logger.error(f"Error getting active sessions: {e}")
+            return []
+    
+    @classmethod
     def close(cls):
         """Tutup koneksi MongoDB"""
         if cls._client:
@@ -71,8 +137,14 @@ class MongoDB:
 # Global database instance
 db = MongoDB.get_database()
 
+# Export helper functions untuk backward compatibility
+save_user_session = MongoDB.save_user_session
+get_user_session = MongoDB.get_user_session
+disconnect_user_session = MongoDB.disconnect_user_session
+get_active_sessions = MongoDB.get_active_sessions
+
 async def register_plugin(client):
-    """Register plugin MongoDB - WAJIB ADA fungsi ini!"""
+    """Register plugin MongoDB"""
     try:
         # Test connection saat startup
         MongoDB.get_client()
