@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Alfread UserBot - Telegram UserBot dengan MongoDB dan Plugin System
-Railway Compatible Version - Simplified
+Railway Compatible Version
 """
 
 import asyncio
@@ -27,6 +27,18 @@ async def main():
         from config import Config
         logger.info("📱 Alfread UserBot Starting...")
         
+        # Cek struktur file
+        logger.info("📁 Checking project structure...")
+        plugins_dir = Path(__file__).parent / "plugins"
+        logger.info(f"Plugin directory: {plugins_dir}")
+        logger.info(f"Plugin directory exists: {plugins_dir.exists()}")
+        
+        if plugins_dir.exists():
+            plugin_files = list(plugins_dir.glob("*.py"))
+            logger.info(f"Found {len(plugin_files)} Python files in plugins directory:")
+            for pf in plugin_files:
+                logger.info(f"  - {pf.name}")
+        
         # Inisialisasi Telethon Client untuk bot
         from telethon import TelegramClient
         
@@ -41,98 +53,58 @@ async def main():
         if Config.BOT_TOKEN:
             await bot_client.start(bot_token=Config.BOT_TOKEN)
             me = await bot_client.get_me()
-            logger.info(f"🤖 Bot started as: @{me.username}")
+            logger.info(f"🤖 Bot started as: @{me.username} (ID: {me.id})")
         else:
             logger.error("❌ BOT_TOKEN is required")
             sys.exit(1)
         
-        # Load plugins untuk bot
-        from plugins import load_plugins
-        await load_plugins(bot_client)
+        # Test MongoDB connection
+        try:
+            from plugins.mongodb import MongoDB
+            MongoDB.get_client()
+            logger.info("✅ MongoDB connection test passed")
+        except Exception as e:
+            logger.warning(f"⚠️ MongoDB connection issue: {e}")
         
-        # Cek dan load sessions dari database (sync version)
-        load_sessions_from_db()
+        # Load plugins untuk bot
+        logger.info("🔄 Loading plugins...")
+        from plugins import load_plugins
+        loaded_count = await load_plugins(bot_client)
+        
+        if loaded_count == 0:
+            logger.warning("⚠️ No plugins loaded! Check plugin directory structure")
+            # Try manual load as fallback
+            await manual_load_plugins(bot_client)
         
         # Keep running
         logger.info("🤖 UserBot is now running. Press Ctrl+C to stop.")
         await bot_client.run_until_disconnected()
         
+    except KeyboardInterrupt:
+        logger.info("👋 Shutting down UserBot...")
     except Exception as e:
         logger.error(f"❌ Error starting UserBot: {e}")
         sys.exit(1)
 
-def load_sessions_from_db():
-    """Load sessions dari MongoDB saat startup (sync version)"""
-    try:
-        from plugins.mongodb import db
-        from telethon import TelegramClient
-        from telethon.sessions import StringSession
-        from config import Config
-        
-        collection = db["user_sessions"]
-        
-        # Gunakan find() synchronous (PyMongo adalah synchronous)
-        active_sessions = list(collection.find({"connected": True}))
-        
-        count = 0
-        for session in active_sessions:
-            try:
-                user_id = session.get("user_id")
-                session_string = session.get("session_string")
-                
-                if not session_string:
-                    continue
-                
-                # Buat client dari session string
-                client = TelegramClient(
-                    StringSession(session_string),
-                    Config.API_ID,
-                    Config.API_HASH
-                )
-                
-                # Connect dan cek session (gunakan asyncio.run untuk synchronous context)
-                try:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    
-                    # Connect client
-                    loop.run_until_complete(client.connect())
-                    
-                    # Cek apakah session valid
-                    is_authorized = loop.run_until_complete(client.is_user_authorized())
-                    
-                    if is_authorized:
-                        # Load plugins untuk client ini
-                        from plugins import load_plugins
-                        loop.run_until_complete(load_plugins(client))
-                        
-                        # Start client di background
-                        asyncio.create_task(client.run_until_disconnected())
-                        
-                        count += 1
-                        logger.info(f"✅ Loaded session for user {user_id}")
-                    else:
-                        loop.run_until_complete(client.disconnect())
-                        # Update status di database
-                        collection.update_one(
-                            {"user_id": user_id},
-                            {"$set": {"connected": False}}
-                        )
-                        logger.warning(f"❌ Session expired for user {user_id}")
-                    
-                    loop.close()
-                    
-                except Exception as e:
-                    logger.error(f"Error connecting client for user {user_id}: {e}")
-                    
-            except Exception as e:
-                logger.error(f"Error loading session: {e}")
-                continue
-        
-        logger.info(f"📂 Loaded {count} active sessions from database")
-        
-    except Exception as e:
-        logger.error(f"Error loading sessions from DB: {e}")
+async def manual_load_plugins(client):
+    """Manual load plugins as fallback"""
+    logger.info("🔄 Trying manual plugin load...")
+    
+    plugins_to_load = [
+        "mongodb",
+        "connect", 
+        "ping",
+        "utils"
+    ]
+    
+    for plugin_name in plugins_to_load:
+        try:
+            module = __import__(f"plugins.{plugin_name}", fromlist=[''])
+            if hasattr(module, 'register_plugin'):
+                await module.register_plugin(client)
+                logger.info(f"✅ Manually loaded: {plugin_name}")
+        except Exception as e:
+            logger.error(f"❌ Failed to manually load {plugin_name}: {e}")
 
 if __name__ == "__main__":
     # Jalankan event loop
