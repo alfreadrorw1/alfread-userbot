@@ -1,6 +1,9 @@
+[file name]: ping.py
+[file content begin]
 import time
 import random
 import asyncio
+from datetime import datetime
 from telethon import events
 from plugins.connect import active_sessions
 from plugins.prefix import get_prefix_from_mongo
@@ -13,24 +16,46 @@ PING_ICONS = [
     "✲", "✱", "✧", "✦", "⭑", "⭒", "⚝", "☀", "☼", "☽"
 ]
 
+# Global variable untuk menyimpan waktu mulai bot
+bot_start_time = datetime.now()
+
 def get_random_icon(icon_list=None):
     """Mendapatkan icon random"""
     if icon_list is None:
         icon_list = PING_ICONS
     return random.choice(icon_list)
 
-def get_uptime():
-    """Calculate bot uptime in human-readable format"""
+def get_bot_uptime():
+    """Calculate bot uptime sejak pertama kali dijalankan"""
     try:
-        # Default uptime 1 jam
-        uptime = 3600
-        return format_time(uptime)
-    except:
-        return "1h 0m 0s"
+        current_time = datetime.now()
+        uptime_seconds = (current_time - bot_start_time).total_seconds()
+        return format_time(uptime_seconds)
+    except Exception as e:
+        print(f"Error calculating uptime: {e}")
+        return "Unknown"
+
+def get_session_uptime(user_id):
+    """Calculate session uptime untuk user tertentu"""
+    try:
+        from plugins.connect import sessions_collection
+        if sessions_collection:
+            session_data = sessions_collection.find_one({"user_id": str(user_id)})
+            if session_data and "created_at" in session_data:
+                created_at = session_data["created_at"]
+                if isinstance(created_at, str):
+                    created_at = datetime.fromisoformat(created_at)
+                session_age_seconds = (datetime.now() - created_at).total_seconds()
+                return format_time(session_age_seconds)
+        return "Unknown"
+    except Exception as e:
+        print(f"Error calculating session uptime: {e}")
+        return "Unknown"
 
 def format_time(seconds):
-    """Format waktu menjadi string"""
-    days, remainder = divmod(int(seconds), 86400)
+    """Format waktu menjadi string yang mudah dibaca"""
+    seconds = int(seconds)
+    days, remainder = divmod(seconds, 86400)
     hours, remainder = divmod(remainder, 3600)
     minutes, seconds = divmod(remainder, 60)
     
@@ -77,8 +102,11 @@ async def setup_userbot_ping(client, user_id):
         # Calculate latency
         latency = (end_time - start_time) * 1000  # Convert to ms
         
-        # Generate random speed (untuk efek visual)
-        speed = random.uniform(latency * 1.5, latency * 3.0)
+        # Get bot uptime
+        bot_uptime = get_bot_uptime()
+        
+        # Get session uptime
+        session_uptime = get_session_uptime(user_id)
         
         # Get user info
         try:
@@ -89,37 +117,18 @@ async def setup_userbot_ping(client, user_id):
             user_name = "User"
             username = "No Username"
         
-        # Get session info
-        try:
-            from plugins.connect import sessions_collection
-            if sessions_collection:
-                session_data = sessions_collection.find_one({"user_id": str(user_id)})
-                if session_data and "created_at" in session_data:
-                    from datetime import datetime
-                    created_at = session_data["created_at"]
-                    if isinstance(created_at, str):
-                        created_at = datetime.fromisoformat(created_at)
-                    session_age = format_time((datetime.now() - created_at).total_seconds())
-                else:
-                    session_age = "Unknown"
-            else:
-                session_age = "Unknown"
-        except:
-            session_age = "Unknown"
-        
         # Generate random response dengan icons yang berbeda
         icon1 = get_random_icon()
         icon2 = get_random_icon()
         icon3 = get_random_icon()
-        separator1 = get_random_icon()
-        separator2 = get_random_icon()
-        separator3 = get_random_icon()
+        icon4 = get_random_icon()
         
         # Format response dengan quote blocks
         response = (
-            f"<blockquote>{icon1} ᴘᴏɴɢ: <code>{latency:.2f}ᴍs</code></blockquote>\n"
-            f"<blockquote>{icon2} sᴘᴇᴇᴅ: <code>{speed:.2f}ᴍs</code></blockquote>\n"
-            f"<blockquote>{icon3} ᴏᴡɴʀ:</blockquote>\n"
+            f"<blockquote>{icon1} ᴘᴏɴɢ: <code>{latency:.2f}ᴍs</code>\n"
+            f"{icon2} ʙᴏᴛ ᴜᴘᴛɪᴍᴇ: <code>{bot_uptime}</code>\n"
+            f"{icon3} sᴇssɪᴏɴ ᴜᴘᴛɪᴍᴇ: <code>{session_uptime}</code>\n"
+            f"<blockquote>{icon4} ᴏᴡɴᴇʀ: Vantzxx</blockquote>\n"
             f"<blockquote>☾. USERBOT @Vantzxx</blockquote>\n\n"
         )
         
@@ -143,4 +152,5 @@ async def add_ping_handler_to_client(client, user_id):
         return False
 
 # Export functions
-__all__ = ['add_ping_handler_to_client']
+__all__ = ['add_ping_handler_to_client', 'get_bot_uptime', 'get_session_uptime']
+[file content end]
