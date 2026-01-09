@@ -12,4 +12,6 @@ SESSION_NAME = os.getenv("SESSION_NAME", "alfread")
 
 # Validation
 if not all([BOT_TOKEN, API_ID, API_HASH, OWNER_ID]):
-    raise ValueError("Please set all required environment variables in .env file")
+    raise ValueError("Please set all required environment variables")
+
+print("✅ Config loaded successfully")
