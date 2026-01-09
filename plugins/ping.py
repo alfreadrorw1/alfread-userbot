@@ -1,5 +1,3 @@
-[file name]: ping.py
-[file content begin]
 import time
 import random
 import asyncio
@@ -153,4 +151,3 @@ async def add_ping_handler_to_client(client, user_id):
 
 # Export functions
 __all__ = ['add_ping_handler_to_client', 'get_bot_uptime', 'get_session_uptime']
-[file content end]
