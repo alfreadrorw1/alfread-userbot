@@ -1,6 +1,8 @@
 """
-Plugins package for Alfread UserBot
+Plugin System untuk Alfread UserBot
+Auto-load semua plugin dari folder plugins
 """
+
 import importlib
 import pkgutil
 import logging
@@ -8,25 +10,29 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-__all__ = [
-    'mongodb',
-    'connect',
-    'ping',
-    'utils'
-]
-
-def discover_plugins():
-    """Discover and import all plugins"""
-    plugins = []
-    package_dir = Path(__file__).parent
+async def load_plugins(client):
+    """Load semua plugin dari folder plugins"""
+    plugins_dir = Path(__file__).parent
+    loaded_plugins = []
     
-    for _, module_name, _ in pkgutil.iter_modules([str(package_dir)]):
-        if module_name != "__init__" and module_name in __all__:
-            try:
-                module = importlib.import_module(f".{module_name}", __package__)
-                plugins.append(module)
-                logger.info(f"✅ Loaded plugin: {module_name}")
-            except Exception as e:
-                logger.error(f"❌ Failed to load plugin {module_name}: {e}")
+    # Cari semua file .py di folder plugins
+    for module_info in pkgutil.iter_modules([str(plugins_dir)]):
+        # Skip __init__ dan file yang diawali underscore
+        if module_info.name.startswith('_'):
+            continue
+            
+        try:
+            # Import module
+            module = importlib.import_module(f"plugins.{module_info.name}")
+            
+            # Jika module memiliki fungsi 'register_plugin'
+            if hasattr(module, 'register_plugin'):
+                await module.register_plugin(client)
+                loaded_plugins.append(module_info.name)
+                logger.info(f"✅ Plugin loaded: {module_info.name}")
+            
+        except Exception as e:
+            logger.error(f"❌ Gagal load plugin {module_info.name}: {e}")
     
-    return plugins
+    logger.info(f"📦 Total {len(loaded_plugins)} plugin loaded: {', '.join(loaded_plugins)}")
+    return loaded_plugins

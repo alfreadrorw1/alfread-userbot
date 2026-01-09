@@ -1,109 +1,59 @@
-import asyncio
+"""
+Utility functions untuk Alfread UserBot
+Helper functions yang digunakan oleh berbagai plugin
+"""
+
 import logging
-import time
 from datetime import datetime
-from functools import wraps
-from typing import Callable, Any, Optional
-
-from telethon import TelegramClient
-from telegram import Update
-from telegram.ext import ContextTypes
-
-from config import config
+from telethon import events
+from config import Config
 
 logger = logging.getLogger(__name__)
 
-class UserbotManager:
-    """Manage userbot instances"""
-    
-    _userbot: Optional[TelegramClient] = None
-    _userbot_ready: bool = False
-    _last_ping: float = 0
-    
-    @classmethod
-    def set_userbot(cls, client: TelegramClient):
-        """Set the active userbot instance"""
-        cls._userbot = client
-        cls._userbot_ready = True
-        logger.info("🤖 Userbot instance set")
-    
-    @classmethod
-    def get_userbot(cls) -> Optional[TelegramClient]:
-        """Get the active userbot instance"""
-        return cls._userbot
-    
-    @classmethod
-    def is_userbot_ready(cls) -> bool:
-        """Check if userbot is ready"""
-        return cls._userbot_ready and cls._userbot is not None
-    
-    @classmethod
-    def update_ping(cls):
-        """Update last ping timestamp"""
-        cls._last_ping = time.time()
-    
-    @classmethod
-    def get_last_ping(cls) -> float:
-        """Get last ping timestamp"""
-        return cls._last_ping
+async def is_owner(event):
+    """Cek apakah user adalah owner"""
+    return event.sender_id == Config.OWNER_ID
 
-def is_owner() -> Callable:
-    """Decorator to check if user is owner"""
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-            user_id = update.effective_user.id
-            if user_id != config.owner_id:
-                await update.message.reply_text("⛔ This command is only available for the owner.")
-                logger.warning(f"Unauthorized access attempt from user {user_id}")
-                return
-            return await func(update, context, *args, **kwargs)
-        return wrapper
-    return decorator
-
-def format_time(seconds: float) -> str:
-    """Format seconds to human readable time"""
-    if seconds < 60:
-        return f"{seconds:.2f}s"
-    elif seconds < 3600:
-        minutes = seconds / 60
-        return f"{minutes:.1f}m"
-    else:
-        hours = seconds / 3600
-        return f"{hours:.1f}h"
-
-def format_timestamp(timestamp: Optional[float] = None) -> str:
-    """Format timestamp to readable date"""
-    if timestamp is None:
-        timestamp = time.time()
-    dt = datetime.fromtimestamp(timestamp)
+def format_time(dt=None):
+    """Format waktu menjadi string"""
+    if dt is None:
+        dt = datetime.now()
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
-def safe_event(func: Callable) -> Callable:
-    """Decorator for safe event handling with error logging"""
-    @wraps(func)
-    async def wrapper(event, *args, **kwargs):
-        try:
-            return await func(event, *args, **kwargs)
-        except Exception as e:
-            logger.error(f"Error in {func.__name__}: {e}", exc_info=True)
-            try:
-                await event.reply(f"❌ Error: {str(e)}")
-            except:
-                pass
-    return wrapper
+def format_duration(seconds):
+    """Format durasi dalam detik ke string"""
+    hours, remainder = divmod(int(seconds), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    
+    if hours > 0:
+        return f"{hours}h {minutes}m {seconds}s"
+    elif minutes > 0:
+        return f"{minutes}m {seconds}s"
+    else:
+        return f"{seconds}s"
 
-def calculate_ping(start_time: float) -> str:
-    """Calculate ping in milliseconds"""
-    ping_ms = (time.time() - start_time) * 1000
-    return f"{ping_ms:.2f}ms"
+def log_command(command, user_id, success=True):
+    """Log command execution"""
+    status = "SUCCESS" if success else "FAILED"
+    logger.info(f"Command: {command} | User: {user_id} | Status: {status}")
 
-async def log_to_owner(message: str, context: ContextTypes.DEFAULT_TYPE):
-    """Send log message to owner"""
+async def reply_error(event, error_message):
+    """Reply dengan format error yang konsisten"""
+    await event.reply(f"❌ **Error:** {error_message}")
+
+async def reply_success(event, message):
+    """Reply dengan format success yang konsisten"""
+    await event.reply(f"✅ **Success:** {message}")
+
+async def delete_message_after(event, seconds):
+    """Hapus pesan setelah beberapa detik"""
+    await asyncio.sleep(seconds)
     try:
-        await context.bot.send_message(
-            chat_id=config.owner_id,
-            text=f"📢 {message}"
-        )
-    except Exception as e:
-        logger.error(f"Failed to send log to owner: {e}")
+        await event.delete()
+    except:
+        pass
+
+async def register_plugin(client):
+    """Register plugin utils"""
+    logger.info("✅ Utils plugin loaded")
+    # Tidak ada handler event khusus untuk utils

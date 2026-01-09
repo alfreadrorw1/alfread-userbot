@@ -1,52 +1,55 @@
+"""
+Configuration Module for Alfread UserBot
+Load environment variables and provide configuration
+"""
+
 import os
-from dataclasses import dataclass
-from typing import Optional
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-@dataclass
 class Config:
-    """Configuration class for the bot"""
+    """Konfigurasi UserBot dari environment variables"""
+    
     # Telegram API
-    api_id: int = int(os.getenv("API_ID", 0))
-    api_hash: str = os.getenv("API_HASH", "")
-    bot_token: str = os.getenv("BOT_TOKEN", "")
+    API_ID = int(os.getenv("API_ID", 0))
+    API_HASH = os.getenv("API_HASH", "")
+    BOT_TOKEN = os.getenv("BOT_TOKEN", "")
     
     # MongoDB
-    mongo_uri: str = os.getenv("MONGO_URI", "")
-    db_name: str = os.getenv("DB_NAME", "alfread_bot")
+    MONGO_URI = os.getenv("MONGO_URI", "")
     
-    # Bot Settings
-    owner_id: int = int(os.getenv("OWNER_ID", 0))
-    log_chat_id: Optional[int] = os.getenv("LOG_CHAT_ID")
+    # UserBot
+    OWNER_ID = int(os.getenv("OWNER_ID", 0))
+    SESSION_NAME = os.getenv("SESSION_NAME", "alfread")
     
-    # Session Settings
-    session_name: str = "alfread_session"
+    # Plugin Config
+    PLUGINS_DIR = "plugins"
     
-    def validate(self) -> bool:
-        """Validate required configuration"""
-        required = [
-            (self.api_id, "API_ID"),
-            (self.api_hash, "API_HASH"),
-            (self.bot_token, "BOT_TOKEN"),
-            (self.mongo_uri, "MONGO_URI"),
-            (self.owner_id, "OWNER_ID")
-        ]
+    @classmethod
+    def validate(cls):
+        """Validasi konfigurasi"""
+        errors = []
         
-        for value, name in required:
-            if not value:
-                raise ValueError(f"Missing required environment variable: {name}")
+        if not cls.API_ID:
+            errors.append("API_ID tidak ditemukan")
+        if not cls.API_HASH:
+            errors.append("API_HASH tidak ditemukan")
+        if not cls.MONGO_URI:
+            errors.append("MONGO_URI tidak ditemukan")
+        if not cls.OWNER_ID:
+            errors.append("OWNER_ID tidak ditemukan")
+            
+        if errors:
+            raise ValueError(f"Konfigurasi tidak lengkap: {', '.join(errors)}")
         
         return True
 
-# Global config instance
-config = Config()
-
-# Validate on import
+# Validasi saat import
 try:
-    config.validate()
-    print("✅ Configuration loaded successfully")
+    Config.validate()
+    print("✅ Konfigurasi valid")
 except ValueError as e:
-    print(f"❌ Configuration error: {e}")
+    print(f"⚠️  Peringatan: {e}")
+    print("ℹ️  Pastikan file .env sudah diisi dengan benar")
