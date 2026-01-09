@@ -17,7 +17,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'plugins'))
 async def restore_sessions():
     """Memulihkan session aktif dari MongoDB"""
     try:
-        sessions = sessions_collection.find({}) if sessions_collection else []
+        if sessions_collection:
+            sessions = sessions_collection.find({})
+        else:
+            print("❌ sessions_collection tidak tersedia")
+            return
+            
         for session_data in sessions:
             user_id = int(session_data['user_id'])
             session_string = session_data.get('session_string')
@@ -61,6 +66,7 @@ async def main():
     await setup_bot_handlers(bot)
     
     # 3. Restore active sessions dari MongoDB dan auto load plugins
+    print("🔄 Restoring sessions from MongoDB...")
     await restore_sessions()
     
     print("🚀 UserBot system is ready!")

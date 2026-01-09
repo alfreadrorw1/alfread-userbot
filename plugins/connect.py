@@ -118,10 +118,6 @@ async def auto_restore_connections(bot):
     for session_data in active_sessions_data:
         user_id = int(session_data["user_id"])
         
-        # Skip jika user adalah bot sendiri
-        if user_id == bot.me.id:
-            continue
-            
         # Skip jika session tidak memiliki string
         if "session_string" not in session_data:
             continue
