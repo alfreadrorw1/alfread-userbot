@@ -1,484 +1,324 @@
 """
-Connect Plugin untuk Alfread UserBot - Railway Compatible
-Sistem connect sederhana untuk UserBot
+Connect Plugin untuk Alfread UserBot
+Command untuk menghubungkan akun user Telegram
 """
 
 import logging
 import asyncio
-from datetime import datetime
-from telethon import events, Button, TelegramClient
-from telethon.sessions import StringSession
-from telethon.errors import SessionPasswordNeededError
+from telethon import TelegramClient, events, errors, Button
+from telethon.tl.types import MessageEntityPhone
 from config import Config
+from plugins.utils import is_owner
+from plugins.mongodb import save_user_session, get_user_session
 
 logger = logging.getLogger(__name__)
 
-# Global variable untuk menyimpan clients yang aktif
-active_userbots = {}
-pending_logins = {}
-last_start_time = {}  # Untuk mencegah double start
+# State management
+user_clients = {}  # {owner_id: user_client}
+pending_logins = {}  # {owner_id: login_data}
 
 async def register_plugin(bot_client):
-    """Register plugin connect ke bot client"""
+    """Register plugin connect"""
     
-    @bot_client.on(events.NewMessage(pattern='/start'))
-    async def start_handler(event):
-        """Handler untuk command /start"""
-        user_id = event.sender_id
-        current_time = datetime.now().timestamp()
+    @bot_client.on(events.NewMessage(pattern=r'^\.connect$', outgoing=True))
+    async def connect_handler(event):
+        """Command .connect untuk menghubungkan user account"""
         
-        # Cek cooldown (minimal 2 detik antara /start)
-        if user_id in last_start_time:
-            time_diff = current_time - last_start_time[user_id]
-            if time_diff < 2:
-                logger.info(f"⏳ Cooldown untuk user {user_id}")
-                return
+        if not await is_owner(event):
+            await event.reply("❌ Hanya owner yang bisa menggunakan command ini!")
+            return
         
-        last_start_time[user_id] = current_time
+        owner_id = event.sender_id
         
-        # Cek apakah sudah login
-        if user_id in active_userbots:
+        # Cek apakah sudah ada client untuk owner ini
+        if owner_id in user_clients:
             try:
-                # Hapus pesan /start
-                await event.delete()
+                if await user_clients[owner_id].is_user_authorized():
+                    await event.reply("✅ Anda sudah terhubung sebagai user!\n\n"
+                                     "Gunakan `.disconnect` untuk memutuskan koneksi.")
+                    return
             except:
                 pass
+        
+        # Minta nomor telepon
+        await event.reply("📱 **Hubungkan Akun User**\n\n"
+                         "Silakan kirim nomor telepon Anda dalam format internasional:\n"
+                         "Contoh: `+6281234567890`\n\n"
+                         "Atau gunakan tombol di bawah untuk membagikan kontak:",
+                         buttons=[
+                             [Button.request_phone("📱 Bagikan Nomor", resize=True)],
+                             [Button.inline("❌ Batal", b"cancel_login")]
+                         ])
+        
+        pending_logins[owner_id] = {
+            'state': 'awaiting_phone',
+            'bot_event': event
+        }
+    
+    @bot_client.on(events.CallbackQuery(pattern=b"cancel_login"))
+    async def cancel_login_handler(event):
+        """Batalkan proses login"""
+        owner_id = event.sender_id
+        
+        if owner_id in pending_logins:
+            del pending_logins[owner_id]
+            await event.answer("✅ Login dibatalkan")
+            await event.delete()
+        else:
+            await event.answer("❌ Tidak ada login yang aktif")
+    
+    @bot_client.on(events.NewMessage(func=lambda e: e.message.contact))
+    async def contact_handler(event):
+        """Handle shared phone contact"""
+        owner_id = event.sender_id
+        
+        if owner_id not in pending_logins:
+            return
+        
+        if pending_logins[owner_id]['state'] != 'awaiting_phone':
+            return
+        
+        contact = event.message.contact
+        if contact.user_id == owner_id:
+            phone_number = f"+{contact.phone_number}"
+            await process_phone_number(owner_id, phone_number, event)
+    
+    @bot_client.on(events.NewMessage(pattern=r'^\+[\d\s\-]+$', outgoing=True))
+    async def phone_number_handler(event):
+        """Handle manual phone number input"""
+        owner_id = event.sender_id
+        
+        if owner_id not in pending_logins:
+            return
+        
+        if pending_logins[owner_id]['state'] != 'awaiting_phone':
+            return
+        
+        phone_number = event.raw_text.strip()
+        await process_phone_number(owner_id, phone_number, event)
+    
+    async def process_phone_number(owner_id, phone_number, event):
+        """Proses nomor telepon untuk login"""
+        try:
+            # Buat session string yang unik
+            session_name = f"user_session_{owner_id}"
             
-            await event.respond(
-                "✅ **Anda sudah terhubung dengan UserBot!**\n\n"
-                "Gunakan perintah `.help` untuk melihat daftar perintah yang tersedia."
+            # Buat client user baru
+            user_client = TelegramClient(
+                session=session_name,
+                api_id=Config.API_ID,
+                api_hash=Config.API_HASH,
+                device_model="Alfread UserBot",
+                system_version="Linux",
+                app_version="1.0.0"
             )
-            return
+            
+            # Koneksikan client
+            await user_client.connect()
+            
+            # Kirim kode OTP
+            sent_code = await user_client.send_code_request(phone_number)
+            
+            pending_logins[owner_id].update({
+                'state': 'awaiting_code',
+                'user_client': user_client,
+                'phone_number': phone_number,
+                'phone_code_hash': sent_code.phone_code_hash
+            })
+            
+            await event.reply(f"📲 **Kode OTP Dikirim!**\n\n"
+                             f"Nomor: `{phone_number}`\n\n"
+                             "Silakan kirim kode OTP yang diterima (format: `12345`):")
+            
+        except errors.PhoneNumberInvalidError:
+            await event.reply("❌ **Nomor telepon tidak valid!**\n\n"
+                             "Pastikan format internasional (contoh: +6281234567890)")
+            if owner_id in pending_logins:
+                del pending_logins[owner_id]
         
-        # Kirim menu connect
-        buttons = [
-            [Button.inline("🔗 Connect UserBot", b"connect_userbot")],
-            [Button.inline("ℹ️ Bantuan", b"help_info")]
-        ]
+        except errors.PhoneNumberBannedError:
+            await event.reply("❌ **Nomor telepon diblokir oleh Telegram!**")
+            if owner_id in pending_logins:
+                del pending_logins[owner_id]
         
-        # Hapus pesan /start
-        try:
-            await event.delete()
-        except:
-            pass
+        except errors.PhoneNumberFloodError:
+            await event.reply("⚠️ **Terlalu banyak permintaan!**\n\n"
+                             "Tunggu beberapa saat sebelum mencoba lagi.")
+            if owner_id in pending_logins:
+                del pending_logins[owner_id]
         
-        # Kirim pesan sekali saja
-        await bot_client.send_message(
-            event.chat_id,
-            "🤖 **Selamat datang di Alfread UserBot!**\n\n"
-            "Saya adalah assistant bot untuk mengelola UserBot premium Anda.\n\n"
-            "**Fitur Utama:**\n"
-            "• Multi-session support\n"
-            "• Plugin system modular\n"
-            "• MongoDB database\n"
-            "• Ready for Railway deployment\n\n"
-            "Klik tombol di bawah untuk mulai:",
-            buttons=buttons
-        )
+        except Exception as e:
+            logger.error(f"Error sending code: {e}")
+            await event.reply(f"❌ **Error:** {str(e)}")
+            if owner_id in pending_logins:
+                del pending_logins[owner_id]
     
-    @bot_client.on(events.CallbackQuery(data=b'connect_userbot'))
-    async def connect_handler(event):
-        """Handler untuk tombol connect"""
-        user_id = event.sender_id
-        
-        # Hapus pesan sebelumnya
-        try:
-            await event.delete()
-        except:
-            pass
-        
-        # Cek apakah user adalah owner
-        if user_id != Config.OWNER_ID:
-            await event.answer(
-                "❌ Hanya owner yang bisa connect UserBot!",
-                alert=True
-            )
-            return
-        
-        # Kirim instruksi login
-        await event.edit(
-            "🔑 **Login ke UserBot**\n\n"
-            "Silakan pilih metode login:\n\n"
-            "1. **Metode 1:** Kirim nomor telepon Anda\n"
-            "   Contoh: `+6281234567890`\n\n"
-            "2. **Metode 2:** Jika sudah punya session string,\n"
-            "   kirim dengan format:\n"
-            "   `.session your_session_string_here`\n\n"
-            "Ketik `.cancel` untuk membatalkan.",
-            buttons=[
-                [Button.inline("❌ Batal", b"cancel_login")]
-            ]
-        )
-        
-        # Simpan state
-        pending_logins[user_id] = {'state': 'awaiting_input'}
-    
-    @bot_client.on(events.CallbackQuery(data=b'help_info'))
-    async def help_handler(event):
-        """Handler untuk tombol bantuan"""
-        help_text = (
-            "📖 **Bantuan Alfread UserBot**\n\n"
-            "**Cara Connect UserBot:**\n"
-            "1. Klik tombol 'Connect UserBot'\n"
-            "2. Kirim nomor telepon (format internasional)\n"
-            "   Contoh: +6281234567890\n"
-            "3. Masukkan kode OTP yang dikirim ke Telegram Anda\n"
-            "4. Jika ada 2FA, masukkan password 2FA\n\n"
-            "**Perintah yang tersedia:**\n"
-            "• `/start` - Mulai bot\n"
-            "• `.ping` - Cek status bot\n"
-            "• `.help` - Tampilkan bantuan\n"
-            "• `.debug` - Info sistem\n\n"
-            "**Untuk Railway Deployment:**\n"
-            "Gunakan session string yang sudah digenerate:\n"
-            "`.session your_session_string`"
-        )
-        
-        await event.edit(
-            help_text,
-            buttons=[
-                [Button.inline("🔙 Kembali", b"back_to_start")]
-            ]
-        )
-    
-    @bot_client.on(events.CallbackQuery(data=b'back_to_start'))
-    async def back_handler(event):
-        """Handler untuk kembali ke start"""
-        user_id = event.sender_id
-        
-        # Reset last start time
-        last_start_time[user_id] = datetime.now().timestamp() - 10
-        
-        # Panggil start handler
-        await start_handler(event)
-    
-    @bot_client.on(events.CallbackQuery(data=b'cancel_login'))
-    async def cancel_callback_handler(event):
-        """Handler untuk tombol cancel"""
-        user_id = event.sender_id
-        
-        if user_id in pending_logins:
-            del pending_logins[user_id]
-        
-        await event.edit(
-            "❌ **Login dibatalkan.**\n\n"
-            "Ketik /start untuk memulai lagi."
-        )
-    
-    @bot_client.on(events.NewMessage(pattern=r'^\.cancel$'))
-    async def cancel_handler(event):
-        """Handler untuk cancel login via command"""
-        user_id = event.sender_id
-        
-        if user_id in pending_logins:
-            del pending_logins[user_id]
-            await event.reply("❌ **Login dibatalkan.**")
-    
-    @bot_client.on(events.NewMessage(pattern=r'^\+(?:[0-9] ?){6,14}[0-9]$'))
-    async def phone_handler(event):
-        """Handler untuk nomor telepon"""
-        user_id = event.sender_id
-        
-        # Cek apakah user sedang dalam proses login
-        if user_id not in pending_logins or pending_logins[user_id]['state'] != 'awaiting_input':
-            return
-        
-        if user_id != Config.OWNER_ID:
-            await event.reply("❌ Hanya owner yang bisa connect UserBot!")
-            return
-        
-        phone = event.raw_text.strip()
-        await process_phone_login(bot_client, event, user_id, phone)
-    
-    @bot_client.on(events.NewMessage(pattern=r'^\.session (.+)$'))
-    async def session_handler(event):
-        """Handler untuk session string"""
-        user_id = event.sender_id
-        
-        if user_id != Config.OWNER_ID:
-            await event.reply("❌ Hanya owner yang bisa connect UserBot!")
-            return
-        
-        session_string = event.pattern_match.group(1)
-        await process_session_string(bot_client, event, user_id, session_string)
-    
-    @bot_client.on(events.NewMessage(pattern=r'^\d{5}$'))
+    @bot_client.on(events.NewMessage(pattern=r'^\d{5}$', outgoing=True))
     async def otp_handler(event):
-        """Handler untuk kode OTP"""
-        user_id = event.sender_id
+        """Handle OTP code"""
+        owner_id = event.sender_id
         
-        if user_id not in pending_logins or pending_logins[user_id].get('state') != 'awaiting_otp':
+        if owner_id not in pending_logins:
             return
         
-        await handle_otp_code(bot_client, event, user_id)
+        if pending_logins[owner_id]['state'] != 'awaiting_code':
+            return
+        
+        otp_code = event.raw_text.strip()
+        login_data = pending_logins[owner_id]
+        
+        try:
+            # Sign in dengan OTP
+            await login_data['user_client'].sign_in(
+                phone=login_data['phone_number'],
+                code=otp_code,
+                phone_code_hash=login_data['phone_code_hash']
+            )
+            
+            # Dapatkan session string
+            session_string = await login_data['user_client'].session.save()
+            
+            # Simpan ke MongoDB
+            save_user_session(
+                user_id=owner_id,
+                session_string=session_string,
+                phone=login_data['phone_number']
+            )
+            
+            # Simpan client ke dictionary
+            user_clients[owner_id] = login_data['user_client']
+            
+            # Dapatkan info user
+            me = await login_data['user_client'].get_me()
+            
+            await event.reply(f"✅ **Login Berhasil!**\n\n"
+                             f"👤 **User:** {me.first_name}\n"
+                             f"📱 **Phone:** `{login_data['phone_number']}`\n"
+                             f"🆔 **ID:** `{me.id}`\n\n"
+                             f"✅ **Sekarang Anda bisa menggunakan command `.ping`!**")
+            
+            # Hapus dari pending
+            del pending_logins[owner_id]
+            
+        except errors.SessionPasswordNeededError:
+            # Butuh 2FA password
+            pending_logins[owner_id]['state'] = 'awaiting_2fa'
+            await event.reply("🔐 **Diperlukan 2FA Password**\n\n"
+                             "Silakan kirim password 2FA Anda:")
+        
+        except errors.PhoneCodeInvalidError:
+            await event.reply("❌ **Kode OTP salah!**\n\n"
+                             "Silakan coba lagi:")
+        
+        except errors.PhoneCodeExpiredError:
+            await event.reply("❌ **Kode OTP kadaluarsa!**\n\n"
+                             "Gunakan `.connect` lagi untuk memulai ulang.")
+            if owner_id in pending_logins:
+                if 'user_client' in pending_logins[owner_id]:
+                    await pending_logins[owner_id]['user_client'].disconnect()
+                del pending_logins[owner_id]
+        
+        except Exception as e:
+            logger.error(f"Error signing in: {e}")
+            await event.reply(f"❌ **Error:** {str(e)}")
+            if owner_id in pending_logins:
+                if 'user_client' in pending_logins[owner_id]:
+                    await pending_logins[owner_id]['user_client'].disconnect()
+                del pending_logins[owner_id]
     
-    @bot_client.on(events.NewMessage())
-    async def password_handler(event):
-        """Handler untuk password 2FA"""
-        user_id = event.sender_id
+    @bot_client.on(events.NewMessage(pattern=r'^[\w\d@#$%^&*()!]{6,}$', outgoing=True))
+    async def twofa_handler(event):
+        """Handle 2FA password"""
+        owner_id = event.sender_id
         
-        if user_id not in pending_logins or pending_logins[user_id].get('state') != 'awaiting_password':
+        if owner_id not in pending_logins:
             return
         
-        if event.raw_text.strip() == '.cancel':
-            if user_id in pending_logins:
-                del pending_logins[user_id]
-            await event.reply("❌ **Login dibatalkan.**")
+        if pending_logins[owner_id]['state'] != 'awaiting_2fa':
             return
         
-        await handle_password(bot_client, event, user_id)
+        password = event.raw_text.strip()
+        login_data = pending_logins[owner_id]
+        
+        try:
+            # Sign in dengan password 2FA
+            await login_data['user_client'].sign_in(password=password)
+            
+            # Dapatkan session string
+            session_string = await login_data['user_client'].session.save()
+            
+            # Simpan ke MongoDB
+            save_user_session(
+                user_id=owner_id,
+                session_string=session_string,
+                phone=login_data['phone_number']
+            )
+            
+            # Simpan client ke dictionary
+            user_clients[owner_id] = login_data['user_client']
+            
+            # Dapatkan info user
+            me = await login_data['user_client'].get_me()
+            
+            await event.reply(f"✅ **Login 2FA Berhasil!**\n\n"
+                             f"👤 **User:** {me.first_name}\n"
+                             f"📱 **Phone:** `{login_data['phone_number']}`\n"
+                             f"🆔 **ID:** `{me.id}`\n\n"
+                             f"✅ **Sekarang Anda bisa menggunakan command `.ping`!**")
+            
+            # Hapus dari pending
+            del pending_logins[owner_id]
+            
+        except Exception as e:
+            logger.error(f"Error 2FA: {e}")
+            await event.reply(f"❌ **Password 2FA salah!**\n\n"
+                             "Silakan coba lagi:")
     
-    # Test handler - INI HARUS DI DALAM register_plugin!
-    @bot_client.on(events.NewMessage(pattern='^\.test$'))
-    async def test_handler(event):
-        """Test handler"""
-        await event.reply("✅ Bot berfungsi dengan baik!")
+    @bot_client.on(events.NewMessage(pattern=r'^\.disconnect$', outgoing=True))
+    async def disconnect_handler(event):
+        """Disconnect user session"""
+        if not await is_owner(event):
+            return
+        
+        owner_id = event.sender_id
+        
+        if owner_id in user_clients:
+            try:
+                await user_clients[owner_id].disconnect()
+                del user_clients[owner_id]
+                
+                # Update MongoDB
+                from plugins.mongodb import disconnect_user_session
+                disconnect_user_session(owner_id)
+                
+                await event.reply("✅ **Disconnected!**\n\n"
+                                 "Sesi user telah diputuskan.")
+            except Exception as e:
+                logger.error(f"Error disconnecting: {e}")
+                await event.reply(f"❌ **Error:** {str(e)}")
+        else:
+            await event.reply("ℹ️ **Tidak ada koneksi aktif**")
+    
+    @bot_client.on(events.NewMessage(pattern=r'^\.session$', outgoing=True))
+    async def session_handler(event):
+        """Cek status session"""
+        if not await is_owner(event):
+            return
+        
+        owner_id = event.sender_id
+        
+        if owner_id in user_clients:
+            try:
+                me = await user_clients[owner_id].get_me()
+                status = "✅ **Connected**"
+                user_info = f"👤 **User:** {me.first_name}\n🆔 **ID:** `{me.id}`"
+            except:
+                status = "❌ **Disconnected**"
+                user_info = ""
+        else:
+            status = "❌ **Tidak ada session aktif**"
+            user_info = ""
+        
+        await event.reply(f"🔍 **Session Status**\n\n{status}\n{user_info}")
     
     logger.info("✅ Connect plugin loaded")
-
-async def process_phone_login(bot_client, event, user_id, phone):
-    """Proses login dengan nomor telepon"""
-    try:
-        # Buat client baru untuk userbot
-        userbot_client = TelegramClient(
-            StringSession(),
-            Config.API_ID,
-            Config.API_HASH
-        )
-        
-        await userbot_client.connect()
-        
-        # Kirim code request
-        sent = await userbot_client.send_code_request(phone)
-        
-        # Simpan data pending
-        pending_logins[user_id] = {
-            'state': 'awaiting_otp',
-            'phone': phone,
-            'phone_code_hash': sent.phone_code_hash,
-            'client': userbot_client,
-            'attempts': 0
-        }
-        
-        await event.reply(
-            f"📲 **Kode OTP telah dikirim ke {phone}**\n\n"
-            "Silakan masukkan kode OTP yang Anda terima:\n"
-            "**Format:** `12345` (5 digit tanpa spasi)\n\n"
-            "Ketik `.cancel` untuk membatalkan."
-        )
-        
-    except Exception as e:
-        logger.error(f"Error sending code: {e}")
-        await event.reply(f"❌ **Error:** {str(e)}")
-        if user_id in pending_logins:
-            del pending_logins[user_id]
-
-async def process_session_string(bot_client, event, user_id, session_string):
-    """Proses login dengan session string"""
-    try:
-        # Buat client dengan session string
-        userbot_client = TelegramClient(
-            StringSession(session_string),
-            Config.API_ID,
-            Config.API_HASH
-        )
-        
-        await userbot_client.connect()
-        
-        # Cek apakah session valid
-        if not await userbot_client.is_user_authorized():
-            await event.reply("❌ **Session string tidak valid atau telah expired!**")
-            await userbot_client.disconnect()
-            return
-        
-        # Simpan session ke database
-        from plugins.mongodb import MongoDB
-        collection = MongoDB.get_collection("user_sessions")
-        
-        collection.update_one(
-            {"user_id": user_id},
-            {"$set": {
-                "session_string": session_string,
-                "phone": "session_string",
-                "connected_at": datetime.now(),
-                "updated_at": datetime.now(),
-                "connected": True
-            }},
-            upsert=True
-        )
-        
-        # Simpan di memory
-        active_userbots[user_id] = userbot_client
-        
-        # Start userbot client
-        asyncio.create_task(start_userbot_client(userbot_client))
-        
-        me = await userbot_client.get_me()
-        await event.reply(
-            f"✅ **Login berhasil dengan session string!**\n\n"
-            f"**Nama:** {me.first_name}\n"
-            f"**ID:** {me.id}\n"
-            f"**Username:** @{me.username if me.username else 'Tidak ada'}\n\n"
-            "UserBot sekarang siap digunakan!"
-        )
-        
-        logger.info(f"User {user_id} connected via session string")
-        
-    except Exception as e:
-        logger.error(f"Error processing session string: {e}")
-        await event.reply(f"❌ **Error:** {str(e)}")
-
-async def handle_otp_code(bot_client, event, user_id):
-    """Handler untuk kode OTP"""
-    try:
-        otp_code = event.raw_text.strip()
-        data = pending_logins[user_id]
-        
-        # Coba sign in dengan OTP
-        userbot_client = data['client']
-        
-        try:
-            await userbot_client.sign_in(
-                phone=data['phone'],
-                code=otp_code,
-                phone_code_hash=data['phone_code_hash']
-            )
-            
-            # Success - dapatkan session string
-            session_string = userbot_client.session.save()
-            
-            # Simpan ke database
-            from plugins.mongodb import MongoDB
-            collection = MongoDB.get_collection("user_sessions")
-            
-            collection.update_one(
-                {"user_id": user_id},
-                {"$set": {
-                    "session_string": session_string,
-                    "phone": data['phone'],
-                    "connected_at": datetime.now(),
-                    "updated_at": datetime.now(),
-                    "connected": True
-                }},
-                upsert=True
-            )
-            
-            # Simpan di memory
-            active_userbots[user_id] = userbot_client
-            
-            # Start userbot client
-            asyncio.create_task(start_userbot_client(userbot_client))
-            
-            me = await userbot_client.get_me()
-            await event.reply(
-                f"✅ **Login berhasil!**\n\n"
-                f"**Nama:** {me.first_name}\n"
-                f"**ID:** {me.id}\n"
-                f"**Username:** @{me.username if me.username else 'Tidak ada'}\n\n"
-                "UserBot sekarang siap digunakan!\n"
-                "Gunakan `.help` untuk melihat perintah yang tersedia."
-            )
-            
-            logger.info(f"User {user_id} successfully logged in")
-            
-        except SessionPasswordNeededError:
-            # Butuh password 2FA
-            pending_logins[user_id]['state'] = 'awaiting_password'
-            await event.reply(
-                "🔒 **Akun Anda memiliki 2FA**\n\n"
-                "Silakan masukkan password 2FA:\n\n"
-                "Ketik `.cancel` untuk membatalkan."
-            )
-            return
-            
-    except Exception as e:
-        logger.error(f"Error during OTP verification: {e}")
-        data['attempts'] += 1
-        
-        if data['attempts'] >= 3:
-            await event.reply(
-                "❌ **Terlalu banyak percobaan gagal!**\n\n"
-                "Silakan mulai ulang dengan /start"
-            )
-            if user_id in pending_logins:
-                if 'client' in pending_logins[user_id]:
-                    await pending_logins[user_id]['client'].disconnect()
-                del pending_logins[user_id]
-        else:
-            await event.reply(
-                f"❌ **Error:** {str(e)}\n\n"
-                f"Percobaan {data['attempts']} dari 3"
-            )
-    
-    finally:
-        # Hapus pending state jika berhasil
-        if user_id in pending_logins and pending_logins[user_id].get('state') != 'awaiting_password':
-            del pending_logins[user_id]
-
-async def handle_password(bot_client, event, user_id):
-    """Handler untuk password 2FA"""
-    try:
-        password = event.raw_text.strip()
-        data = pending_logins[user_id]
-        userbot_client = data['client']
-        
-        # Coba sign in dengan password
-        await userbot_client.sign_in(password=password)
-        
-        # Success - dapatkan session string
-        session_string = userbot_client.session.save()
-        
-        # Simpan ke database
-        from plugins.mongodb import MongoDB
-        collection = MongoDB.get_collection("user_sessions")
-        
-        collection.update_one(
-            {"user_id": user_id},
-            {"$set": {
-                "session_string": session_string,
-                "phone": data['phone'],
-                "connected_at": datetime.now(),
-                "updated_at": datetime.now(),
-                "connected": True,
-                "has_2fa": True
-            }},
-            upsert=True
-        )
-        
-        # Simpan di memory
-        active_userbots[user_id] = userbot_client
-        
-        # Start userbot client
-        asyncio.create_task(start_userbot_client(userbot_client))
-        
-        me = await userbot_client.get_me()
-        await event.reply(
-            f"✅ **Login dengan 2FA berhasil!**\n\n"
-            f"**Nama:** {me.first_name}\n"
-            f"**ID:** {me.id}\n"
-            f"**Username:** @{me.username if me.username else 'Tidak ada'}\n\n"
-            "UserBot sekarang siap digunakan!"
-        )
-        
-        logger.info(f"User {user_id} successfully logged in with 2FA")
-        
-    except Exception as e:
-        logger.error(f"Error during 2FA verification: {e}")
-        await event.reply(f"❌ **Error:** Password salah atau {str(e)}")
-    
-    finally:
-        # Hapus pending state
-        if user_id in pending_logins:
-            del pending_logins[user_id]
-
-async def start_userbot_client(client):
-    """Start userbot client dengan plugins"""
-    try:
-        # Load plugins untuk userbot client
-        from plugins import load_plugins
-        await load_plugins(client)
-        
-        # Keep client running
-        await client.run_until_disconnected()
-    except Exception as e:
-        logger.error(f"Error in userbot client: {e}")
