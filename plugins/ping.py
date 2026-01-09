@@ -1,9 +1,12 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler
 from telethon import TelegramClient
 from telethon.errors import RPCError
 import config
-import asyncio
 import time
 
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -51,7 +54,6 @@ async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🟢 **Userbot Online**\n"
             f"👤 **User:** {me.first_name} {me.last_name or ''}\n"
             f"📱 **Username:** {username}\n"
-            f"📞 **Phone:** +{me.phone}\n"
             f"⚡ **Ping:** {ping_ms} ms\n"
             f"🆔 **ID:** {me.id}"
         )
