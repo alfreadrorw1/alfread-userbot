@@ -3,20 +3,22 @@ from datetime import datetime
 from plugins.connect import sessions_collection
 
 async def get_prefix_from_mongo(user_id):
-    """Ambil prefix dari MongoDB - DIPINDAHKAN dari prefix.py"""
+    """Ambil prefix dari MongoDB"""
     try:
-        if sessions_collection:
-            session_data = sessions_collection.find_one({"user_id": str(user_id)})
+        # PERBAIKAN: Cek collection dengan benar
+        if sessions_collection is None:
+            return "."
             
-            if session_data and "prefix" in session_data:
-                return session_data["prefix"]
-            else:
-                # Default prefix
-                default_prefix = "."
-                await save_prefix_to_mongo(user_id, default_prefix)
-                return default_prefix
+        session_data = sessions_collection.find_one({"user_id": str(user_id)})
         
-        return "."
+        if session_data and "prefix" in session_data:
+            return session_data["prefix"]
+        else:
+            # Default prefix
+            default_prefix = "."
+            await save_prefix_to_mongo(user_id, default_prefix)
+            return default_prefix
+        
     except Exception as e:
         print(f"❌ Error getting prefix from MongoDB: {e}")
         return "."
@@ -24,19 +26,21 @@ async def get_prefix_from_mongo(user_id):
 async def save_prefix_to_mongo(user_id, prefix):
     """Simpan prefix ke MongoDB"""
     try:
-        if sessions_collection:
-            result = sessions_collection.update_one(
-                {"user_id": str(user_id)},
-                {
-                    "$set": {
-                        "prefix": prefix,
-                        "prefix_updated": datetime.now()
-                    }
-                },
-                upsert=True
-            )
-            return result.acknowledged
-        return False
+        # PERBAIKAN: Cek collection dengan benar
+        if sessions_collection is None:
+            return False
+            
+        result = sessions_collection.update_one(
+            {"user_id": str(user_id)},
+            {
+                "$set": {
+                    "prefix": prefix,
+                    "prefix_updated": datetime.now()
+                }
+            },
+            upsert=True
+        )
+        return result.acknowledged
     except Exception as e:
         print(f"❌ Error saving prefix to MongoDB: {e}")
         return False

@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Telethon config
-API_ID = int(os.getenv("API_ID", 0))
+API_ID = os.getenv("API_ID", "")
 API_HASH = os.getenv("API_HASH", "")
 
 # Bot config
@@ -13,14 +13,50 @@ BOT_USERNAME = os.getenv("BOT_USERNAME", "")
 
 # MongoDB config
 MONGO_URI = os.getenv("MONGO_URI", "")
-SESSION_NAME = os.getenv("SESSION_NAME", "userbot_alfread")
+SESSION_NAME = os.getenv("SESSION_NAME", "userbot_sessions")
 
 # Owner ID
-OWNER_ID = int(os.getenv("OWNER_ID", 0))
+OWNER_ID = os.getenv("OWNER_ID", "")
 
 # Validate required config
-if not API_ID or not API_HASH:
-    raise ValueError("API_ID and API_HASH must be set in .env file")
+def validate_config():
+    errors = []
+    
+    if not API_ID:
+        errors.append("API_ID must be set in .env file")
+    else:
+        try:
+            API_ID = int(API_ID)
+        except ValueError:
+            errors.append("API_ID must be a number")
+    
+    if not API_HASH:
+        errors.append("API_HASH must be set in .env file")
+    
+    if not BOT_TOKEN:
+        errors.append("BOT_TOKEN must be set in .env file")
+    
+    if not MONGO_URI:
+        errors.append("MONGO_URI must be set in .env file")
+    
+    if not OWNER_ID:
+        errors.append("OWNER_ID must be set in .env file")
+    else:
+        try:
+            OWNER_ID = int(OWNER_ID)
+        except ValueError:
+            errors.append("OWNER_ID must be a number")
+    
+    if errors:
+        print("❌ Configuration errors:")
+        for error in errors:
+            print(f"   - {error}")
+        raise ValueError("Invalid configuration. Please check your .env file")
+    
+    print("✅ Configuration validated successfully")
 
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN must be set in .env file")
+# Panggil validasi saat module diimport
+try:
+    validate_config()
+except Exception as e:
+    print(f"❌ Configuration error: {e}")
