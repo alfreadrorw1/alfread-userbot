@@ -45,7 +45,6 @@ sessions_collection = db["sessions"]
 # Global dictionaries untuk menyimpan data
 pending_verifications = {}
 active_sessions = {}
-login_attempts = {}
 
 # Fungsi untuk membuat userbot client
 def create_userbot_client(user_id, session_string=None):
@@ -77,7 +76,7 @@ def save_session_to_mongo(user_id, session_string, auto_connect=False):
         "session_string": session_string,
         "created_at": datetime.now(),
         "last_used": datetime.now(),
-        "auto_connect": auto_connect,  # Flag untuk auto-connect
+        "auto_connect": auto_connect,
         "is_active": True
     }
     sessions_collection.update_one(
@@ -107,18 +106,6 @@ def get_user_session(user_id):
         return sessions_collection.find_one({"user_id": str(user_id), "is_active": True})
     except:
         return None
-
-# Fungsi untuk mengupdate status koneksi
-def update_session_status(user_id, is_connected):
-    """Update status koneksi session di MongoDB"""
-    try:
-        sessions_collection.update_one(
-            {"user_id": str(user_id)},
-            {"$set": {"is_connected": is_connected, "last_checked": datetime.now()}}
-        )
-        return True
-    except:
-        return False
 
 # Fungsi untuk auto-restore koneksi saat restart
 async def auto_restore_connections(bot):
@@ -165,41 +152,14 @@ async def auto_restore_connections(bot):
                 from plugins.ping import add_ping_handler_to_client
                 await add_ping_handler_to_client(client, user_id)
                 
-                # Update status di MongoDB
-                update_session_status(user_id, True)
-                
                 print(f"✅ Berhasil restore koneksi untuk user {user_id}")
                 restored_count += 1
-                
-                # Coba kirim notifikasi ke owner
-                try:
-                    me = await client.get_me()
-                    await bot.send_message(
-                        config.OWNER_ID,
-                        f"🔄 **Auto-reconnect Berhasil**\n\n"
-                        f"✅ UserBot berhasil di-restore otomatis\n"
-                        f"👤 User: {me.first_name}\n"
-                        f"📱 ID: {user_id}\n"
-                        f"⏰ Waktu: {datetime.now().strftime('%H:%M:%S')}"
-                    )
-                except:
-                    pass
                     
             else:
                 print(f"❌ Session tidak valid untuk user {user_id}")
-                # Mark session as inactive
-                sessions_collection.update_one(
-                    {"user_id": str(user_id)},
-                    {"$set": {"is_active": False}}
-                )
                 
         except AuthKeyError:
             print(f"❌ Session expired untuk user {user_id}")
-            # Mark session as inactive
-            sessions_collection.update_one(
-                {"user_id": str(user_id)},
-                {"$set": {"is_active": False}}
-            )
         except Exception as e:
             print(f"❌ Error restoring connection untuk user {user_id}: {e}")
     
@@ -213,10 +173,8 @@ __all__ = [
     'delete_session_from_mongo',
     'get_all_active_sessions',
     'get_user_session',
-    'update_session_status',
     'auto_restore_connections',
     'pending_verifications',
     'active_sessions',
-    'login_attempts',
     'sessions_collection'
 ]

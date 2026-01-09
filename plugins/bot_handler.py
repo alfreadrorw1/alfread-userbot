@@ -12,7 +12,6 @@ from plugins.connect import (
     delete_session_from_mongo,
     pending_verifications,
     active_sessions,
-    login_attempts,
     sessions_collection,
     auto_restore_connections,
     get_user_session
@@ -22,26 +21,7 @@ from config import BOT_TOKEN, OWNER_ID, MONGO_URI
 # Setup koneksi MongoDB tambahan untuk user data
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client.get_database()
-users_collection = db['users']  # Untuk menyimpan data pengguna
-security_collection = db['security']  # Untuk data keamanan
-
-def format_time_remaining(seconds):
-    """Format waktu tersisa menjadi format yang mudah dibaca"""
-    if seconds <= 0:
-        return "waktu habis"
-    
-    minutes, seconds = divmod(seconds, 60)
-    hours, minutes = divmod(minutes, 60)
-    
-    parts = []
-    if hours > 0:
-        parts.append(f"{hours} jam")
-    if minutes > 0:
-        parts.append(f"{minutes} menit")
-    if seconds > 0:
-        parts.append(f"{seconds} detik")
-    
-    return " ".join(parts)
+users_collection = db['users']
 
 def save_user_data(user_id, phone=None, username=None, auto_connect=False):
     """Menyimpan data pengguna ke MongoDB"""
@@ -70,47 +50,6 @@ def get_user_data(user_id):
     except:
         return {}
 
-def save_security_data(user_id, login_method='phone', ip_address=None, user_agent=None):
-    """Menyimpan data keamanan ke MongoDB"""
-    try:
-        security_collection.insert_one({
-            "user_id": str(user_id),
-            "login_method": login_method,
-            "ip_address": ip_address,
-            "user_agent": user_agent,
-            "login_time": datetime.now(),
-            "timestamp": time.time()
-        })
-        return True
-    except Exception as e:
-        print(f"❌ Error saving security data: {e}")
-        return False
-
-def get_login_attempts_count(user_id, time_window=1800):
-    """Menghitung jumlah percobaan login dalam waktu tertentu"""
-    try:
-        count = security_collection.count_documents({
-            "user_id": str(user_id),
-            "timestamp": {"$gt": time.time() - time_window},
-            "event_type": "login_attempt"
-        })
-        return count
-    except:
-        return 0
-
-def record_login_attempt(user_id):
-    """Mencatat percobaan login"""
-    try:
-        security_collection.insert_one({
-            "user_id": str(user_id),
-            "event_type": "login_attempt",
-            "timestamp": time.time(),
-            "created_at": datetime.now()
-        })
-        return True
-    except:
-        return False
-
 def get_session_info(user_id):
     """Mengambil info session dari MongoDB"""
     try:
@@ -138,18 +77,13 @@ def get_session_info(user_id):
 async def setup_bot_handlers(bot):
     """Setup semua handler untuk bot koneksi"""
     
-    # ================================================
-    # AUTO-RESTORE SAAT BOT DIMULAI
-    # ================================================
+    # Auto-restore saat bot dimulai
     print("🚀 Memulai auto-restore koneksi...")
     await auto_restore_connections(bot)
     
     @bot.on(events.NewMessage(pattern='/start'))
     async def start_handler(event):
         user_id = event.sender_id
-        
-        # Cek apakah user adalah owner
-        is_owner = user_id == OWNER_ID
         
         # Cek apakah user sudah memiliki session aktif
         if user_id in active_sessions:
@@ -175,69 +109,24 @@ async def setup_bot_handlers(bot):
                 )
                 return
         
-        # Menu utama dengan opsi berbeda untuk owner
-        if is_owner:
-            buttons = [
-                [Button.inline("📱 Owner Quick Connect", data="owner_quick")],
-                [Button.inline("📱 Login dengan Nomor", data="phone_login")],
-                [Button.inline("📋 Daftar Perintah", data="help")],
-                [Button.inline("⚙️ Pengaturan", data="settings")],
-                [Button.inline("ℹ️ Tentang", data="about")]
-            ]
-        else:
-            buttons = [
-                [Button.inline("📱 Login dengan Nomor", data="phone_login")],
-                [Button.inline("📋 Daftar Perintah", data="help")],
-                [Button.inline("ℹ️ Tentang", data="about")]
-            ]
-        
-        owner_text = "\n👑 **Mode Owner Aktif**\n" if is_owner else ""
+        # Menu utama
+        buttons = [
+            [Button.inline("📱 Login dengan Nomor", data="phone_login")],
+            [Button.inline("📋 Daftar Perintah", data="help")],
+            [Button.inline("ℹ️ Tentang", data="about")]
+        ]
         
         await event.reply(
-            f"🤖 **UserBot Connection Bot**{owner_text}\n\n"
+            "🤖 **UserBot Connection Bot**\n\n"
             "Gunakan bot ini untuk menghubungkan akun Telegram Anda sebagai UserBot.\n"
             "Pilih opsi di bawah:",
             buttons=buttons
         )
 
-    @bot.on(events.NewMessage(pattern='/owner_connect'))
-    async def owner_connect_handler(event):
-        """Handler khusus owner untuk koneksi langsung"""
-        user_id = event.sender_id
-        
-        # Cek apakah user adalah owner
-        if user_id != OWNER_ID:
-            await event.reply("❌ **Akses ditolak!** Hanya owner yang bisa menggunakan command ini.")
-            return
-        
-        # Cek apakah sudah terhubung
-        if user_id in active_sessions:
-            client = active_sessions[user_id]
-            if client and client.is_connected():
-                await event.reply("⚠️ **Anda sudah terhubung!**\nGunakan /status untuk melihat status.")
-                return
-        
-        # Kirim tombol untuk share phone
-        await event.reply(
-            "👑 **Owner Quick Connect**\n\n"
-            "Silakan bagikan nomor telepon Anda untuk koneksi cepat:",
-            buttons=[Button.request_phone("📱 Bagikan Nomor", resize=True)]
-        )
-        
-        # Setup pending verification khusus owner
-        pending_verifications[user_id] = {
-            'method': 'phone',
-            'attempts': 0,
-            'timestamp': time.time(),
-            'is_owner': True,
-            'auto_connect': True  # Default auto-connect untuk owner
-        }
-
     @bot.on(events.NewMessage(pattern='/login'))
     async def login_command_handler(event):
         """Handler untuk command /login"""
         user_id = event.sender_id
-        is_owner = user_id == OWNER_ID
         
         if user_id in active_sessions:
             client = active_sessions[user_id]
@@ -245,28 +134,13 @@ async def setup_bot_handlers(bot):
                 await event.reply("⚠️ **Anda sudah login!**\nGunakan /status untuk melihat status.")
                 return
         
-        # Cek percobaan login
-        attempts = get_login_attempts_count(user_id)
-        if attempts >= 3:
-            await event.reply("🚫 **Terlalu banyak percobaan login!**\nCoba lagi dalam 30 menit.")
-            return
-        
-        if is_owner:
-            buttons = [
-                [Button.inline("👑 Owner Quick Connect", data="owner_quick")],
-                [Button.inline("📱 Login dengan Nomor", data="phone_login")],
-                [Button.inline("↩️ Kembali", data="back_to_main")]
-            ]
-        else:
-            buttons = [
-                [Button.inline("📱 Login dengan Nomor", data="phone_login")],
-                [Button.inline("↩️ Kembali", data="back_to_main")]
-            ]
-        
-        owner_text = "\n👑 **Mode Owner: Gunakan Quick Connect untuk koneksi cepat**" if is_owner else ""
+        buttons = [
+            [Button.inline("📱 Login dengan Nomor", data="phone_login")],
+            [Button.inline("↩️ Kembali", data="back_to_main")]
+        ]
         
         await event.reply(
-            f"🔑 **Login UserBot**{owner_text}\n\n"
+            "🔑 **Login UserBot**\n\n"
             "Pilih metode login:",
             buttons=buttons
         )
@@ -293,7 +167,6 @@ async def setup_bot_handlers(bot):
     async def status_command_handler(event):
         """Handler untuk command /status"""
         user_id = event.sender_id
-        is_owner = user_id == OWNER_ID
         
         if user_id in active_sessions:
             client = active_sessions[user_id]
@@ -310,11 +183,10 @@ async def setup_bot_handlers(bot):
                 session_info = get_session_info(user_id)
                 auto_status = "🟢 AKTIF" if session_info.get('auto_connect') else "🔴 NON-AKTIF"
                 
-                owner_text = "\n👑 **Status: OWNER**" if is_owner else ""
                 auto_text = f"\n🔄 **Auto-connect:** {auto_status}"
                 
                 status_msg = (
-                    f"📊 **Status UserBot**{owner_text}{auto_text}\n\n"
+                    f"📊 **Status UserBot**{auto_text}\n\n"
                     f"🟢 **Status:** Connected\n"
                     f"👤 **Nama:** {user_name}\n"
                     f"📱 **Username:** {username}\n"
@@ -363,65 +235,17 @@ async def setup_bot_handlers(bot):
             )
             await event.reply("✅ **Auto-connect diaktifkan!**\nUserBot akan otomatis terhubung saat bot restart.")
 
-    @bot.on(events.CallbackQuery(data=b'owner_quick'))
-    async def owner_quick_handler(event):
-        """Handler untuk owner quick connect"""
-        user_id = event.sender_id
-        
-        if user_id != OWNER_ID:
-            await event.answer("❌ Akses ditolak!", alert=True)
-            return
-        
-        # Cek percobaan login
-        attempts = get_login_attempts_count(user_id)
-        if attempts >= 3:
-            await event.answer("🚫 Terlalu banyak percobaan! Coba lagi dalam 30 menit.", alert=True)
-            return
-        
-        # Catat percobaan login
-        record_login_attempt(user_id)
-        
-        await event.edit(
-            "👑 **Owner Quick Connect**\n\n"
-            "Silakan bagikan nomor telepon Anda untuk koneksi cepat:",
-            buttons=[Button.request_phone("📱 Bagikan Nomor", resize=True)]
-        )
-        
-        pending_verifications[user_id] = {
-            'method': 'phone',
-            'attempts': 0,
-            'timestamp': time.time(),
-            'is_owner': True,
-            'auto_connect': True
-        }
-
     @bot.on(events.CallbackQuery(data=b'phone_login'))
     async def phone_login_handler(event):
         user_id = event.sender_id
-        is_owner = user_id == OWNER_ID
         
-        # Cek cooldown login attempts
-        attempts = get_login_attempts_count(user_id)
-        if attempts >= 3:
-            await event.answer("🚫 Terlalu banyak percobaan! Coba lagi dalam 30 menit.", alert=True)
-            return
-        
-        if is_owner:
-            buttons = [
-                [Button.inline("👑 Owner Quick Connect", data="owner_quick")],
-                [Button.inline("📱 Bagikan Nomor Telepon", data="share_phone")],
-                [Button.inline("↩️ Kembali", data="back_to_main")]
-            ]
-        else:
-            buttons = [
-                [Button.inline("📱 Bagikan Nomor Telepon", data="share_phone")],
-                [Button.inline("↩️ Kembali", data="back_to_main")]
-            ]
-        
-        owner_text = "\n\n👑 **Untuk koneksi cepat, gunakan Owner Quick Connect**" if is_owner else ""
+        buttons = [
+            [Button.inline("📱 Bagikan Nomor Telepon", data="share_phone")],
+            [Button.inline("↩️ Kembali", data="back_to_main")]
+        ]
         
         await event.edit(
-            f"📱 **Login dengan Nomor Telepon**{owner_text}\n\n"
+            "📱 **Login dengan Nomor Telepon**\n\n"
             "Silakan klik tombol di bawah untuk berbagi nomor telepon Anda:",
             buttons=buttons
         )
@@ -430,20 +254,8 @@ async def setup_bot_handlers(bot):
     async def share_phone_handler(event):
         user_id = event.sender_id
         
-        # Cek percobaan login
-        attempts = get_login_attempts_count(user_id)
-        if attempts >= 3:
-            await event.answer("🚫 Terlalu banyak percobaan! Coba lagi dalam 30 menit.", alert=True)
-            return
-        
-        # Catat percobaan login
-        record_login_attempt(user_id)
-        
-        is_owner = user_id == OWNER_ID
-        owner_text = "\n👑 **Mode Owner: Auto-connect akan diaktifkan**" if is_owner else ""
-        
         await event.edit(
-            f"🔑 **Premium UserBot Connect**{owner_text}\n\n"
+            "🔑 **Premium UserBot Connect**\n\n"
             "Silakan bagikan nomor telepon Anda untuk memulai:",
             buttons=[Button.request_phone("📱 Bagikan Nomor", resize=True)]
         )
@@ -452,8 +264,7 @@ async def setup_bot_handlers(bot):
             'method': 'phone',
             'attempts': 0,
             'timestamp': time.time(),
-            'is_owner': is_owner,
-            'auto_connect': is_owner  # Auto-connect default untuk owner
+            'auto_connect': False
         }
 
     @bot.on(events.CallbackQuery(data=b'disconnect'))
@@ -476,7 +287,6 @@ async def setup_bot_handlers(bot):
     @bot.on(events.CallbackQuery(data=b'status'))
     async def status_handler(event):
         user_id = event.sender_id
-        is_owner = user_id == OWNER_ID
         
         if user_id in active_sessions:
             client = active_sessions[user_id]
@@ -486,11 +296,10 @@ async def setup_bot_handlers(bot):
             session_info = get_session_info(user_id)
             auto_status = "✅ AKTIF" if session_info.get('auto_connect') else "❌ NON-AKTIF"
             
-            owner_text = "\n👑 **Status: OWNER**" if is_owner else ""
             auto_text = f"\n🔄 **Auto-connect:** {auto_status}"
             
             message = (
-                f"📊 **Status UserBot**{owner_text}{auto_text}\n\n"
+                f"📊 **Status UserBot**{auto_text}\n\n"
                 f"🟢 Status: {status}\n"
                 f"⏰ Session Age: {session_info['age']}"
             )
@@ -540,17 +349,14 @@ async def setup_bot_handlers(bot):
     @bot.on(events.CallbackQuery(data=b'settings'))
     async def settings_handler(event):
         user_id = event.sender_id
-        is_owner = user_id == OWNER_ID
         
         # Get current settings
         user_data = get_user_data(user_id)
         auto_connect_status = user_data.get('auto_connect', False)
         auto_text = "✅ AKTIF" if auto_connect_status else "❌ NON-AKTIF"
         
-        owner_text = "\n👑 **Pengaturan Owner**" if is_owner else ""
-        
         settings_text = (
-            f"⚙️ **Pengaturan UserBot**{owner_text}\n\n"
+            f"⚙️ **Pengaturan UserBot**\n\n"
             f"🔄 **Auto-connect:** {auto_text}\n"
             f"• UserBot akan otomatis terhubung saat restart\n\n"
             f"📱 **Session:** {len(active_sessions)} aktif\n\n"
@@ -569,19 +375,8 @@ async def setup_bot_handlers(bot):
 
     @bot.on(events.CallbackQuery(data=b'help_commands'))
     async def help_commands_handler(event):
-        user_id = event.sender_id
-        is_owner = user_id == OWNER_ID
-        
-        owner_commands = ""
-        if is_owner:
-            owner_commands = (
-                "\n👑 **Owner Commands:**\n"
-                "/owner_connect - Koneksi cepat untuk owner\n"
-                "/restore_all - Restore semua koneksi\n"
-            )
-        
         help_text = (
-            f"🛠️ **UserBot Commands**{owner_commands}\n\n"
+            "🛠️ **UserBot Commands**\n\n"
             "**Basic Commands:**\n"
             "`.ping` - Cek kecepatan koneksi\n"
             "`.alive` - Cek status userbot\n"
@@ -607,20 +402,8 @@ async def setup_bot_handlers(bot):
 
     @bot.on(events.CallbackQuery(data=b'help'))
     async def help_handler(event):
-        user_id = event.sender_id
-        is_owner = user_id == OWNER_ID
-        
-        owner_help = ""
-        if is_owner:
-            owner_help = (
-                "\n👑 **Fitur Owner:**\n"
-                "• Quick connect dengan /owner_connect\n"
-                "• Auto-connect default aktif\n"
-                "• Priority restoration saat restart\n"
-            )
-        
         help_text = (
-            f"📋 **Daftar Perintah**{owner_help}\n\n"
+            "📋 **Daftar Perintah**\n\n"
             "**Bot Commands:**\n"
             "/start - Memulai bot\n"
             "/login - Mulai proses login\n"
@@ -676,7 +459,6 @@ async def setup_bot_handlers(bot):
     @bot.on(events.CallbackQuery(data=b'back_to_main'))
     async def back_to_main_handler(event):
         user_id = event.sender_id
-        is_owner = user_id == OWNER_ID
         
         # Cek status login
         if user_id in active_sessions:
@@ -686,8 +468,6 @@ async def setup_bot_handlers(bot):
                 session_info = get_session_info(user_id)
                 auto_status = "✅ AKTIF" if session_info.get('auto_connect') else "❌ NON-AKTIF"
                 
-                owner_text = "\n👑 **Mode Owner Aktif**" if is_owner else ""
-                
                 buttons = [
                     [Button.inline("🔌 Disconnect", data="disconnect")],
                     [Button.inline("📊 Status", data="status")],
@@ -696,7 +476,7 @@ async def setup_bot_handlers(bot):
                 ]
                 
                 await event.edit(
-                    f"✅ **Anda sudah terhubung dengan UserBot!**{owner_text}\n\n"
+                    f"✅ **Anda sudah terhubung dengan UserBot!**\n\n"
                     f"**Auto-connect:** {auto_status}\n"
                     "Gunakan command `.help` di UserBot untuk melihat perintah yang tersedia.\n"
                     "Command `.ping` untuk test koneksi.",
@@ -704,26 +484,15 @@ async def setup_bot_handlers(bot):
                 )
                 return
         
-        # Menu utama dengan opsi berbeda untuk owner
-        if is_owner:
-            buttons = [
-                [Button.inline("📱 Owner Quick Connect", data="owner_quick")],
-                [Button.inline("📱 Login dengan Nomor", data="phone_login")],
-                [Button.inline("📋 Daftar Perintah", data="help")],
-                [Button.inline("⚙️ Pengaturan", data="settings")],
-                [Button.inline("ℹ️ Tentang", data="about")]
-            ]
-        else:
-            buttons = [
-                [Button.inline("📱 Login dengan Nomor", data="phone_login")],
-                [Button.inline("📋 Daftar Perintah", data="help")],
-                [Button.inline("ℹ️ Tentang", data="about")]
-            ]
-        
-        owner_text = "\n👑 **Mode Owner Aktif**" if is_owner else ""
+        # Menu utama
+        buttons = [
+            [Button.inline("📱 Login dengan Nomor", data="phone_login")],
+            [Button.inline("📋 Daftar Perintah", data="help")],
+            [Button.inline("ℹ️ Tentang", data="about")]
+        ]
         
         await event.edit(
-            f"🤖 **UserBot Connection Bot**{owner_text}\n\n"
+            "🤖 **UserBot Connection Bot**\n\n"
             "Gunakan bot ini untuk menghubungkan akun Telegram Anda sebagai UserBot.\n"
             "Pilih opsi di bawah:",
             buttons=buttons
@@ -748,15 +517,14 @@ async def setup_bot_handlers(bot):
             
             # Dapatkan auto-connect setting dari pending verification
             auto_connect = pending_verifications[user_id].get('auto_connect', False)
-            is_owner = pending_verifications[user_id].get('is_owner', False)
             
             # Simpan data user ke MongoDB
             save_user_data(user_id, phone=phone, auto_connect=auto_connect)
             
             # Proses login
-            await process_phone_login(event, phone, user_id, auto_connect, is_owner)
+            await process_phone_login(event, phone, user_id, auto_connect)
 
-    async def process_phone_login(event, phone, user_id, auto_connect=False, is_owner=False):
+    async def process_phone_login(event, phone, user_id, auto_connect=False):
         try:
             # Buat client baru
             client = create_userbot_client(user_id)
@@ -771,14 +539,11 @@ async def setup_bot_handlers(bot):
                 'phone': phone,
                 'phone_code_hash': sent_code.phone_code_hash,
                 'timestamp': time.time(),
-                'auto_connect': auto_connect,
-                'is_owner': is_owner
+                'auto_connect': auto_connect
             })
             
-            owner_text = "\n👑 **Mode Owner: Auto-connect akan diaktifkan**" if is_owner else ""
-            
             await event.reply(
-                f"📲 **Kode verifikasi terkirim!**{owner_text}\n\n"
+                "📲 **Kode verifikasi terkirim!**\n\n"
                 "Masukkan kode OTP yang diterima via Telegram dengan format:\n"
                 "`1 2 3 4 5` (5 digit dipisahkan spasi)\n\n"
                 "⚠️ **Catatan:**\n"
@@ -813,11 +578,6 @@ async def setup_bot_handlers(bot):
             msg = await event.reply("🏓 Pinging...")
             latency = (time.time() - start_time) * 1000
             await msg.edit(f"🏓 **Pong!**\n⚡ Speed: {latency:.2f} ms")
-        elif text.lower() == '/restore_all' and user_id == OWNER_ID:
-            # Restore semua koneksi (owner only)
-            msg = await event.reply("🔄 Memulai restore semua koneksi...")
-            restored = await auto_restore_connections(bot)
-            await msg.edit(f"✅ **Restore selesai!**\n{restored} koneksi berhasil di-restore.")
 
     async def handle_otp_code(event, text, user_id):
         code = ''.join(text.split())
@@ -885,7 +645,6 @@ async def setup_bot_handlers(bot):
         try:
             # Dapatkan auto-connect setting
             auto_connect = verification.get('auto_connect', False)
-            is_owner = verification.get('is_owner', False)
             
             # Simpan session string ke MongoDB dengan auto-connect flag
             session_string = client.session.save()
@@ -902,9 +661,6 @@ async def setup_bot_handlers(bot):
             from plugins.loader import load_plugins_for_client
             await load_plugins_for_client(client, user_id)
             
-            # Simpan data keamanan ke MongoDB
-            save_security_data(user_id, login_method='phone')
-            
             # Simpan data user lengkap
             try:
                 me = await client.get_me()
@@ -918,7 +674,6 @@ async def setup_bot_handlers(bot):
             # Hapus pending verification
             del pending_verifications[user_id]
             
-            owner_text = "\n👑 **Mode Owner Aktif**" if is_owner else ""
             auto_text = "\n🔄 **Auto-connect: AKTIF**" if auto_connect else ""
             
             buttons = [
@@ -929,25 +684,12 @@ async def setup_bot_handlers(bot):
             ]
             
             await event.reply(
-                f"✅ **Login berhasil!**{owner_text}{auto_text}\n\n"
+                f"✅ **Login berhasil!**{auto_text}\n\n"
                 "UserBot sekarang aktif dan siap digunakan.\n"
                 "Gunakan command `.help` untuk melihat daftar perintah.\n"
                 "Command `.ping` untuk test koneksi userbot.",
                 buttons=buttons
             )
-            
-            # Kirim notifikasi ke owner jika ini bukan owner
-            if not is_owner:
-                try:
-                    await bot.send_message(
-                        OWNER_ID,
-                        f"📱 **User baru terhubung**\n\n"
-                        f"👤 User ID: `{user_id}`\n"
-                        f"📞 Phone: {verification['phone']}\n"
-                        f"⏰ Waktu: {datetime.now().strftime('%H:%M:%S')}"
-                    )
-                except:
-                    pass
                 
         except Exception as e:
             await event.reply(f"❌ **Error saat menyelesaikan login:** {str(e)}")
