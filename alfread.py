@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
 Alfread UserBot - Telegram UserBot dengan MongoDB dan Plugin System
-Entry point utama
+Entry point utama - Railway Compatible
 """
 
 import asyncio
 import logging
 import sys
+import os
 from pathlib import Path
 
 # Setup logging
@@ -26,11 +27,16 @@ async def main():
         from config import Config
         logger.info("📱 Alfread UserBot Starting...")
         
+        # Cek environment Railway
+        IS_RAILWAY = os.getenv("RAILWAY_ENVIRONMENT") == "production" or os.getenv("RAILWAY_SERVICE_NAME") is not None
+        
         # Inisialisasi Telethon Client
         from telethon import TelegramClient
         from telethon.errors import SessionPasswordNeededError
         
-        # Buat client
+        # Buat client dengan session string jika ada
+        session_string = os.getenv("SESSION_STRING", "")
+        
         client = TelegramClient(
             session=Config.SESSION_NAME,
             api_id=Config.API_ID,
@@ -44,9 +50,27 @@ async def main():
         from plugins import load_plugins
         await load_plugins(client)
         
-        # Mulai client
+        # Mulai client dengan cara yang berbeda untuk Railway
         logger.info("🚀 Connecting to Telegram...")
-        await client.start()
+        
+        if IS_RAILWAY:
+            logger.info("⚡ Running in Railway environment")
+            
+            # Coba gunakan bot token jika ada
+            if Config.BOT_TOKEN:
+                await client.start(bot_token=Config.BOT_TOKEN)
+                logger.info("🤖 Started as Bot")
+            else:
+                # Cek jika session sudah ada
+                if not os.path.exists(f"{Config.SESSION_NAME}.session"):
+                    logger.error("❌ No session file found for Railway deployment")
+                    logger.info("ℹ️ Please create session locally first, then upload to Railway")
+                    sys.exit(1)
+                
+                await client.start()
+        else:
+            # Local environment - bisa minta input
+            await client.start()
         
         # Get bot info
         me = await client.get_me()

@@ -27,5 +27,9 @@ USER userbot
 ENV PORT=8080
 EXPOSE $PORT
 
+# Health check untuk Railway
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)"
+
 # Command untuk menjalankan UserBot
 CMD ["python", "alfread.py"]
