@@ -34,4 +34,4 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV TZ=Asia/Jakarta
 
 # Run the bot
-CMD ["python", "main.py"]
+CMD ["python", "alfread.py"]
