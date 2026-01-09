@@ -30,7 +30,7 @@ async def save_prefix_to_mongo(user_id, prefix):
                 {
                     "$set": {
                         "prefix": prefix,
-                        "updated_at": datetime.now()
+                        "prefix_updated": datetime.now()
                     }
                 },
                 upsert=True

@@ -140,7 +140,7 @@ async def auto_restore_connections(bot):
                 # Simpan ke active sessions
                 active_sessions[user_id] = client
                 
-                # ⭐⭐⭐ AUTO-LOAD SEMUA PLUGINS OTOMATIS ⭐⭐⭐
+                # AUTO-LOAD SEMUA PLUGINS menggunakan sistem baru
                 from plugins import auto_load_all_plugins_for_client
                 await auto_load_all_plugins_for_client(client, user_id)
                 

@@ -19,24 +19,30 @@ def get_plugin_handler(name):
 async def auto_setup_plugin_for_client(client, user_id, plugin_name):
     """Auto setup plugin untuk client tertentu"""
     try:
+        # Coba import module
+        spec = importlib.util.find_spec(f"plugins.{plugin_name}")
+        if spec is None:
+            print(f"⚠️ Plugin {plugin_name} not found")
+            return False
+            
         module = importlib.import_module(f"plugins.{plugin_name}")
         
         # Cek dan panggil fungsi setup yang sesuai
         if hasattr(module, 'add_handler_to_client'):
             success = await module.add_handler_to_client(client, user_id)
             if success:
-                print(f"✅ Auto-loaded {plugin_name} for user {user_id} via add_handler_to_client()")
+                print(f"✅ Auto-loaded {plugin_name} for user {user_id}")
                 return True
         elif hasattr(module, 'setup'):
             success = await module.setup(client, user_id)
             if success:
-                print(f"✅ Auto-loaded {plugin_name} for user {user_id} via setup()")
+                print(f"✅ Auto-loaded {plugin_name} for user {user_id}")
                 return True
         
         # Cek jika ada fungsi handler langsung
         elif hasattr(module, 'handler'):
             client.add_event_handler(module.handler)
-            print(f"✅ Auto-loaded {plugin_name} for user {user_id} via handler()")
+            print(f"✅ Auto-loaded {plugin_name} for user {user_id}")
             return True
         
         print(f"⚠️ Plugin {plugin_name} has no setup function")
@@ -68,7 +74,7 @@ async def auto_load_all_plugins_for_client(client, user_id):
             print(f"❌ Failed to auto-load {module_name}: {e}")
             failed_plugins.append(module_name)
     
-    print(f"✅ Auto-loaded {len(loaded_plugins)} plugins: {', '.join(loaded_plugins)}")
+    print(f"✅ Auto-loaded {len(loaded_plugins)} plugins")
     if failed_plugins:
         print(f"⚠️ Failed to load: {', '.join(failed_plugins)}")
     
@@ -78,16 +84,19 @@ def discover_plugins():
     """Discover semua plugin di folder plugins"""
     plugins = []
     
-    # Import semua module di folder plugins
-    for _, module_name, is_pkg in pkgutil.iter_modules(['plugins']):
-        # Skip module sistem
-        if module_name not in ['__init__', 'connect', 'bot_handler', 'loader', 'utils']:
-            plugins.append(module_name)
+    try:
+        # Import semua module di folder plugins
+        for _, module_name, is_pkg in pkgutil.iter_modules(['plugins']):
+            # Skip module sistem
+            if module_name not in ['__init__', 'connect', 'bot_handler', 'loader', 'utils']:
+                plugins.append(module_name)
+    except Exception as e:
+        print(f"❌ Error discovering plugins: {e}")
     
     return plugins
 
 # Export fungsi untuk auto-load
-__all__ = discover_plugins() + [
+__all__ = [
     'auto_load_all_plugins_for_client',
     'auto_setup_plugin_for_client',
     'register_plugin',

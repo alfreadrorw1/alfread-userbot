@@ -13,12 +13,13 @@ from plugins.bot_handler import setup_bot_handlers
 async def restore_sessions():
     """Memulihkan session aktif dari MongoDB"""
     try:
-        if sessions_collection:
-            sessions = sessions_collection.find({"is_active": True})
-        else:
+        if not sessions_collection:
             print("❌ sessions_collection tidak tersedia")
             return
             
+        sessions = sessions_collection.find({"is_active": True})
+        restored_count = 0
+        
         for session_data in sessions:
             user_id = int(session_data['user_id'])
             session_string = session_data.get('session_string')
@@ -37,20 +38,21 @@ async def restore_sessions():
                         await auto_load_all_plugins_for_client(client, user_id)
                         
                         print(f"✅ Restored session for user: {user_id}")
+                        restored_count += 1
                     else:
                         # Hapus session yang tidak valid
-                        if sessions_collection:
-                            sessions_collection.delete_one({"user_id": str(user_id)})
+                        sessions_collection.delete_one({"user_id": str(user_id)})
                         print(f"❌ Invalid session for user: {user_id}")
                         
                 except Exception as e:
                     print(f"❌ Error restoring session for {user_id}: {e}")
                     # Hapus session yang error
-                    if sessions_collection:
-                        sessions_collection.delete_one({"user_id": str(user_id)})
+                    sessions_collection.delete_one({"user_id": str(user_id)})
                     
     except Exception as e:
         print(f"❌ Error restoring sessions: {e}")
+    
+    return restored_count
 
 async def main():
     print("🤖 Starting UserBot System...")
@@ -67,10 +69,10 @@ async def main():
     
     # 3. Restore active sessions dari MongoDB dan auto load plugins
     print("🔄 Restoring sessions from MongoDB...")
-    await restore_sessions()
+    restored_count = await restore_sessions()
     
-    print("🚀 UserBot system is ready!")
-    print(f"📊 Active sessions: {len(active_sessions)}")
+    print(f"🚀 UserBot system is ready!")
+    print(f"📊 Active sessions: {restored_count} restored")
     
     # Jalankan bot dan userbot
     try:

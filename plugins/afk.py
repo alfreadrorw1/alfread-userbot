@@ -2,7 +2,7 @@ import asyncio
 import time
 from datetime import datetime
 from telethon import events
-from plugins.utils import get_prefix_from_mongo
+from plugins.utils import get_prefix_from_mongo, format_time
 from plugins.connect import active_sessions
 
 # Dictionary untuk menyimpan status AFK
@@ -57,7 +57,6 @@ async def add_afk_handler_to_client(client, user_id):
                 afk_duration = time.time() - afk_data["time"]
                 
                 # Format duration menggunakan utils
-                from plugins.utils import format_time
                 duration_text = format_time(afk_duration)
                 
                 response = (
@@ -112,7 +111,6 @@ async def add_afk_handler_to_client(client, user_id):
                     afk_data = afk_users[mentioned_id]
                     
                     # Hitung durasi AFK menggunakan utils
-                    from plugins.utils import format_time
                     afk_duration = time.time() - afk_data["time"]
                     duration_text = format_time(afk_duration)
                     

@@ -81,49 +81,67 @@ async def setup_bot_handlers(bot):
     print("🚀 Memulai auto-restore koneksi...")
     await auto_restore_connections(bot)
     
-    @bot.on(events.NewMessage(pattern='/start'))
+    # Variabel untuk melacak pesan yang sedang diproses
+    processing_messages = set()
+    
+    @bot.on(events.NewMessage(pattern=r'^/start$'))  # Pattern yang lebih spesifik
     async def start_handler(event):
-        user_id = event.sender_id
+        """Handler untuk /start command"""
+        message_id = (event.chat_id, event.id)
         
-        # Cek apakah user sudah memiliki session aktif
-        if user_id in active_sessions:
-            client = active_sessions[user_id]
-            if client and client.is_connected():
-                # Get session info
-                session_info = get_session_info(user_id)
-                auto_status = "✅ AKTIF" if session_info.get('auto_connect') else "❌ NON-AKTIF"
-                
-                buttons = [
-                    [Button.inline("🔌 Disconnect", data="disconnect")],
-                    [Button.inline("📊 Status", data="status")],
-                    [Button.inline("⚙️ Pengaturan", data="settings")],
-                    [Button.inline("🛠️ Commands", data="help_commands")]
-                ]
-                
-                await event.reply(
-                    f"✅ **Anda sudah terhubung dengan UserBot!**\n\n"
-                    f"**Auto-connect:** {auto_status}\n"
-                    f"Gunakan command `.help` di UserBot untuk melihat perintah yang tersedia.\n"
-                    f"Command `.ping` untuk test koneksi.",
-                    buttons=buttons
-                )
-                return
+        # Cek apakah pesan sedang diproses
+        if message_id in processing_messages:
+            return
+        processing_messages.add(message_id)
         
-        # Menu utama
-        buttons = [
-            [Button.inline("📱 Login dengan Nomor", data="phone_login")],
-            [Button.inline("📋 Daftar Perintah", data="help")],
-            [Button.inline("ℹ️ Tentang", data="about")]
-        ]
-        
-        await event.reply(
-            "🤖 **UserBot Connection Bot**\n\n"
-            "Gunakan bot ini untuk menghubungkan akun Telegram Anda sebagai UserBot.\n"
-            "Pilih opsi di bawah:",
-            buttons=buttons
-        )
+        try:
+            user_id = event.sender_id
+            
+            # Cek apakah user sudah memiliki session aktif
+            if user_id in active_sessions:
+                client = active_sessions[user_id]
+                if client and client.is_connected():
+                    # Get session info
+                    session_info = get_session_info(user_id)
+                    auto_status = "✅ AKTIF" if session_info.get('auto_connect') else "❌ NON-AKTIF"
+                    
+                    buttons = [
+                        [Button.inline("🔌 Disconnect", data="disconnect")],
+                        [Button.inline("📊 Status", data="status")],
+                        [Button.inline("⚙️ Pengaturan", data="settings")],
+                        [Button.inline("🛠️ Commands", data="help_commands")]
+                    ]
+                    
+                    # Gunakan respond bukan reply untuk menghindari double
+                    await event.respond(
+                        f"✅ **Anda sudah terhubung dengan UserBot!**\n\n"
+                        f"**Auto-connect:** {auto_status}\n"
+                        f"Gunakan command `.help` di UserBot untuk melihat perintah yang tersedia.\n"
+                        f"Command `.ping` untuk test koneksi.",
+                        buttons=buttons
+                    )
+                    return
+            
+            # Menu utama
+            buttons = [
+                [Button.inline("📱 Login dengan Nomor", data="phone_login")],
+                [Button.inline("📋 Daftar Perintah", data="help")],
+                [Button.inline("ℹ️ Tentang", data="about")]
+            ]
+            
+            await event.respond(
+                "🤖 **UserBot Connection Bot**\n\n"
+                "Gunakan bot ini untuk menghubungkan akun Telegram Anda sebagai UserBot.\n"
+                "Pilih opsi di bawah:",
+                buttons=buttons
+            )
+            
+        finally:
+            # Hapus dari processing setelah selesai
+            if message_id in processing_messages:
+                processing_messages.remove(message_id)
 
-    @bot.on(events.NewMessage(pattern='/login'))
+    @bot.on(events.NewMessage(pattern=r'^/login$'))
     async def login_command_handler(event):
         """Handler untuk command /login"""
         user_id = event.sender_id
@@ -131,7 +149,7 @@ async def setup_bot_handlers(bot):
         if user_id in active_sessions:
             client = active_sessions[user_id]
             if client and client.is_connected():
-                await event.reply("⚠️ **Anda sudah login!**\nGunakan /status untuk melihat status.")
+                await event.respond("⚠️ **Anda sudah login!**\nGunakan /status untuk melihat status.")
                 return
         
         buttons = [
@@ -139,13 +157,13 @@ async def setup_bot_handlers(bot):
             [Button.inline("↩️ Kembali", data="back_to_main")]
         ]
         
-        await event.reply(
+        await event.respond(
             "🔑 **Login UserBot**\n\n"
             "Pilih metode login:",
             buttons=buttons
         )
 
-    @bot.on(events.NewMessage(pattern='/logout'))
+    @bot.on(events.NewMessage(pattern=r'^/logout$'))
     async def logout_command_handler(event):
         """Handler untuk command /logout"""
         user_id = event.sender_id
@@ -161,9 +179,9 @@ async def setup_bot_handlers(bot):
         # Hapus session dari MongoDB
         delete_session_from_mongo(user_id)
         
-        await event.reply("✅ **Berhasil logout!**\nUserBot telah terputus.")
+        await event.respond("✅ **Berhasil logout!**\nUserBot telah terputus.")
 
-    @bot.on(events.NewMessage(pattern='/status'))
+    @bot.on(events.NewMessage(pattern=r'^/status$'))
     async def status_command_handler(event):
         """Handler untuk command /status"""
         user_id = event.sender_id
@@ -203,15 +221,15 @@ async def setup_bot_handlers(bot):
             else:
                 status_msg = "📊 **Status UserBot**\n\n🔴 **Status:** Not logged in"
         
-        await event.reply(status_msg)
+        await event.respond(status_msg)
 
-    @bot.on(events.NewMessage(pattern='/autoconnect'))
+    @bot.on(events.NewMessage(pattern=r'^/autoconnect$'))
     async def autoconnect_handler(event):
         """Handler untuk mengatur auto-connect"""
         user_id = event.sender_id
         
         if user_id not in active_sessions:
-            await event.reply("❌ **Anda belum login!**\nLogin terlebih dahulu dengan /login")
+            await event.respond("❌ **Anda belum login!**\nLogin terlebih dahulu dengan /login")
             return
         
         # Get current auto-connect status
@@ -225,7 +243,7 @@ async def setup_bot_handlers(bot):
                 {"user_id": str(user_id)},
                 {"$set": {"auto_connect": False}}
             )
-            await event.reply("✅ **Auto-connect dimatikan!**\nUserBot tidak akan otomatis terhubung saat restart.")
+            await event.respond("✅ **Auto-connect dimatikan!**\nUserBot tidak akan otomatis terhubung saat restart.")
         else:
             # Aktifkan auto-connect
             save_user_data(user_id, auto_connect=True)
@@ -233,7 +251,7 @@ async def setup_bot_handlers(bot):
                 {"user_id": str(user_id)},
                 {"$set": {"auto_connect": True}}
             )
-            await event.reply("✅ **Auto-connect diaktifkan!**\nUserBot akan otomatis terhubung saat bot restart.")
+            await event.respond("✅ **Auto-connect diaktifkan!**\nUserBot akan otomatis terhubung saat bot restart.")
 
     @bot.on(events.CallbackQuery(data=b'phone_login'))
     async def phone_login_handler(event):
@@ -512,7 +530,7 @@ async def setup_bot_handlers(bot):
                 pass
             
             if user_id not in pending_verifications:
-                await event.reply("⚠️ **Sesi login telah kadaluarsa!**\nGunakan /start untuk memulai ulang.")
+                await event.respond("⚠️ **Sesi login telah kadaluarsa!**\nGunakan /start untuk memulai ulang.")
                 return
             
             # Dapatkan auto-connect setting dari pending verification
@@ -542,7 +560,7 @@ async def setup_bot_handlers(bot):
                 'auto_connect': auto_connect
             })
             
-            await event.reply(
+            await event.respond(
                 "📲 **Kode verifikasi terkirim!**\n\n"
                 "Masukkan kode OTP yang diterima via Telegram dengan format:\n"
                 "`1 2 3 4 5` (5 digit dipisahkan spasi)\n\n"
@@ -552,30 +570,45 @@ async def setup_bot_handlers(bot):
             )
             
         except Exception as e:
-            await event.reply(f"❌ **Error:** {str(e)}")
+            await event.respond(f"❌ **Error:** {str(e)}")
 
-    @bot.on(events.NewMessage(func=lambda e: e.is_private))
-    async def message_handler(event):
+    # Handler untuk pesan privat dengan pattern yang lebih spesifik
+    @bot.on(events.NewMessage(
+        pattern=r'^\d{1} \d{1} \d{1} \d{1} \d{1}$',  # Pattern untuk OTP
+        func=lambda e: e.is_private
+    ))
+    async def otp_handler(event):
+        """Handler khusus untuk OTP code"""
         user_id = event.sender_id
         text = event.raw_text.strip()
         
-        if event.message.contact:
+        if user_id in pending_verifications:
+            await handle_otp_code(event, text, user_id)
+    
+    @bot.on(events.NewMessage(
+        pattern=r'.+',  # Pattern umum
+        func=lambda e: e.is_private and not e.message.contact
+    ))
+    async def private_message_handler(event):
+        """Handler untuk semua pesan privat lainnya"""
+        user_id = event.sender_id
+        text = event.raw_text.strip().lower()
+        
+        # Skip jika ini OTP (sudah ditangani oleh otp_handler)
+        if re.match(r'^\d{1} \d{1} \d{1} \d{1} \d{1}$', text):
             return
         
-        # Cek apakah ini OTP code
-        if user_id in pending_verifications and re.match(r'^\d{1} \d{1} \d{1} \d{1} \d{1}$', text):
-            await handle_otp_code(event, text, user_id)
         # Cek apakah ini password 2FA
-        elif user_id in pending_verifications and pending_verifications[user_id].get('needs_password'):
+        if user_id in pending_verifications and pending_verifications[user_id].get('needs_password'):
             await handle_password(event, text, user_id)
-        elif text.lower() == '/logout':
+        elif text == '/logout':
             await logout_command_handler(event)
-        elif text.lower() == '/status':
+        elif text == '/status':
             await status_command_handler(event)
-        elif text.lower() == '/ping':
+        elif text == '/ping':
             # Bot ping handler
             start_time = time.time()
-            msg = await event.reply("🏓 Pinging...")
+            msg = await event.respond("🏓 Pinging...")
             latency = (time.time() - start_time) * 1000
             await msg.edit(f"🏓 **Pong!**\n⚡ Speed: {latency:.2f} ms")
 
@@ -596,7 +629,7 @@ async def setup_bot_handlers(bot):
             
         except SessionPasswordNeededError:
             verification['needs_password'] = True
-            await event.reply(
+            await event.respond(
                 "🔒 **Akun Anda memiliki verifikasi 2 langkah**\n\n"
                 "Silakan masukkan sandi verifikasi 2 langkah Anda:"
             )
@@ -606,12 +639,12 @@ async def setup_bot_handlers(bot):
             if verification['attempts'] >= 3:
                 # Reset login attempts
                 del pending_verifications[user_id]
-                await event.reply(
+                await event.respond(
                     "🚫 **Terlalu banyak percobaan OTP gagal!**\n\n"
                     "Silakan mulai ulang dengan /start"
                 )
             else:
-                await event.reply(
+                await event.respond(
                     f"❌ **Kode OTP salah!**\n"
                     f"Percobaan {verification['attempts']} dari 3"
                 )
@@ -631,12 +664,12 @@ async def setup_bot_handlers(bot):
             
             if verification['attempts'] >= 3:
                 del pending_verifications[user_id]
-                await event.reply(
+                await event.respond(
                     "🚫 **Terlalu banyak percobaan sandi gagal!**\n\n"
                     "Silakan mulai ulang dengan /start"
                 )
             else:
-                await event.reply(
+                await event.respond(
                     f"❌ **Sandi salah!**\n"
                     f"Percobaan {verification['attempts']} dari 3"
                 )
@@ -679,7 +712,7 @@ async def setup_bot_handlers(bot):
                 [Button.inline("🛠️ Commands", data="help_commands")]
             ]
             
-            await event.reply(
+            await event.respond(
                 f"✅ **Login berhasil!**{auto_text}\n\n"
                 "UserBot sekarang aktif dan siap digunakan.\n"
                 "Gunakan command `.help` untuk melihat daftar perintah.\n"
@@ -688,4 +721,4 @@ async def setup_bot_handlers(bot):
             )
                 
         except Exception as e:
-            await event.reply(f"❌ **Error saat menyelesaikan login:** {str(e)}")
+            await event.respond(f"❌ **Error saat menyelesaikan login:** {str(e)}")
