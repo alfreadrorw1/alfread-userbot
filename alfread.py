@@ -14,12 +14,13 @@ from pathlib import Path
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('alfread.log')
+    ]
 )
 logger = logging.getLogger(__name__)
-
-# Tambahkan path project
-sys.path.insert(0, str(Path(__file__).parent))
 
 async def main():
     """Fungsi utama untuk menjalankan UserBot"""
@@ -27,9 +28,8 @@ async def main():
         # Import config
         from config import Config
         logger.info("📱 Alfread UserBot Starting...")
-        
-        # Cek environment Railway
-        IS_RAILWAY = os.getenv("RAILWAY_ENVIRONMENT") == "production" or os.getenv("RAILWAY_SERVICE_NAME") is not None
+        logger.info(f"Python: {sys.version}")
+        logger.info(f"Working dir: {os.getcwd()}")
         
         # Inisialisasi Telethon Client untuk bot
         from telethon import TelegramClient
@@ -86,12 +86,14 @@ async def main():
         except Exception as e:
             logger.warning(f"⚠️ MongoDB connection issue: {e}")
         
-        # Load plugins untuk bot
+        # Load plugins untuk bot - HANYA SEKALI
         logger.info("🔄 Loading plugins...")
         from plugins import load_plugins
-        loaded_count = await load_plugins(bot_client)
+        loaded_plugins = await load_plugins(bot_client)
         
-        if loaded_count == 0:
+        if loaded_plugins:
+            logger.info(f"✅ {len(loaded_plugins)} plugins loaded successfully")
+        else:
             logger.warning("⚠️ No plugins loaded! Check plugin directory structure")
         
         # Keep running
@@ -101,9 +103,14 @@ async def main():
     except KeyboardInterrupt:
         logger.info("👋 Shutting down UserBot...")
     except Exception as e:
-        logger.error(f"❌ Error starting UserBot: {e}")
+        logger.error(f"❌ Error in UserBot: {e}", exc_info=True)
         sys.exit(1)
 
 if __name__ == "__main__":
-    # Jalankan event loop
-    asyncio.run(main())
+    # Jalankan event loop - HANYA SEKALI
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n👋 Bot stopped by user")
+    except Exception as e:
+        print(f"❌ Fatal error: {e}")

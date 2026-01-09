@@ -10,10 +10,23 @@ from plugins.utils import is_owner
 
 logger = logging.getLogger(__name__)
 
+# Handler tracker
+_start_handler = None
+_callback_handlers = []
+
 async def register_plugin(client):
-    """Register plugin start"""
+    """Register plugin start - dipanggil sekali saja"""
+    global _start_handler, _callback_handlers
     
-    @client.on(events.NewMessage(pattern=r'^/start$', outgoing=False))
+    # Remove existing handlers if any
+    if _start_handler:
+        client.remove_event_handler(_start_handler)
+    
+    for handler in _callback_handlers:
+        client.remove_event_handler(handler)
+    _callback_handlers.clear()
+    
+    @client.on(events.NewMessage(pattern=r'^/start$'))
     async def start_handler(event):
         """Command /start untuk memulai bot"""
         
@@ -34,9 +47,8 @@ async def register_plugin(client):
 • `/ping` - Test latency
 • `/debug` - System info
 
-**Owner:** @{owner_username}
 **Version:** 1.0.0
-""".format(owner_username=Config.OWNER_USERNAME if hasattr(Config, 'OWNER_USERNAME') else "Unknown")
+"""
         
         # Tambahkan button untuk help
         buttons = [
@@ -45,6 +57,8 @@ async def register_plugin(client):
         ]
         
         await event.reply(welcome_text, buttons=buttons)
+    
+    _start_handler = start_handler
     
     @client.on(events.CallbackQuery(pattern=b"show_help"))
     async def show_help_handler(event):
@@ -65,6 +79,8 @@ async def register_plugin(client):
 """
         await event.edit(help_text)
     
+    _callback_handlers.append(show_help_handler)
+    
     @client.on(events.CallbackQuery(pattern=b"show_connect"))
     async def show_connect_handler(event):
         """Show connect info via callback"""
@@ -79,5 +95,7 @@ async def register_plugin(client):
 **Note:** Hanya owner yang bisa menggunakan fitur ini.
 """
         await event.edit(connect_text)
+    
+    _callback_handlers.append(show_connect_handler)
     
     logger.info("✅ Start plugin loaded")

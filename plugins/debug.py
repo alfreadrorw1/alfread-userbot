@@ -12,11 +12,22 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
+# Handler tracker
+_debug_handler = None
+_help_handler = None
+
 async def register_plugin(client):
-    """Register plugin debug"""
+    """Register plugin debug - dipanggil sekali saja"""
+    global _debug_handler, _help_handler
     
-    @client.on(events.NewMessage(pattern=r'^/debug$', outgoing=False))
-    async def handler(event):
+    # Remove existing handlers if any
+    if _debug_handler:
+        client.remove_event_handler(_debug_handler)
+    if _help_handler:
+        client.remove_event_handler(_help_handler)
+    
+    @client.on(events.NewMessage(pattern=r'^/debug$'))
+    async def debug_handler(event):
         """Command /debug untuk melihat info system"""
         
         logger.info(f"Received /debug command from {event.sender_id}")
@@ -51,12 +62,13 @@ async def register_plugin(client):
 
 **Status:**
 • Running on Railway: {'✅ Yes' if Config.RAILWAY_ENVIRONMENT else '❌ No'}
-• Plugins loaded: Check logs
 """
         
         await event.reply(debug_info)
     
-    @client.on(events.NewMessage(pattern=r'^/help$', outgoing=False))
+    _debug_handler = debug_handler
+    
+    @client.on(events.NewMessage(pattern=r'^/help$'))
     async def help_handler(event):
         """Command /help untuk bantuan"""
         
@@ -84,4 +96,6 @@ async def register_plugin(client):
         
         await event.reply(help_text)
     
-    logger.info("✅ Debug plugin loaded (prefix: /)")
+    _help_handler = help_handler
+    
+    logger.info("✅ Debug plugin loaded")
