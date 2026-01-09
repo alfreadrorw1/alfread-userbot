@@ -1,85 +1,48 @@
 import time
-import logging
-from telegram import Update
-from telegram.ext import CommandHandler, ContextTypes
+import random
+from telethon import events
 from config import OWNER_ID
 
-logger = logging.getLogger(__name__)
+# Karakter khusus tanpa emoji
+PING_ICONS = ["☆", "★", "✪", "✯", "✦", "✧", "❂", "❈", "❖", "✶", "✷", "✸", "✹", "✺", "✻", "✼", "✽", "✾", "✿", "❀"]
+SPEED_ICONS = ["⌛", "⏱", "⏲", "⏰", "‰", "‱", "⁂", "⁃", "⁄", "⁇", "⁈", "⁉", "⁊", "⁋", "⁌", "⁍", "⁎", "⁏", "⁐", "⁑"]
+OWNER_ICONS = ["○", "●", "◎", "◇", "◆", "□", "■", "▢", "▣", "▤", "▥", "▦", "▧", "▨", "▩", "▪", "▫", "▬", "▭", "▮"]
 
-class PingSystem:
-    def __init__(self):
-        self.start_time = time.time()
+async def setup(bot, user):
+    """Setup ping command"""
     
-    def get_uptime(self):
-        """Get formatted uptime"""
-        uptime = int(time.time() - self.start_time)
-        
-        days, remainder = divmod(uptime, 86400)
-        hours, remainder = divmod(remainder, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        
-        parts = []
-        if days: parts.append(f"{days}d")
-        if hours: parts.append(f"{hours}h")
-        if minutes: parts.append(f"{minutes}m")
-        if seconds or not parts: parts.append(f"{seconds}s")
-        
-        return ' '.join(parts)
-
-ping_system = PingSystem()
-
-def setup(bot_app, user_client):
-    """Setup the ping plugin"""
-    
-    async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler for /ping command"""
-        user_id = update.effective_user.id
-        
-        # Check if user is owner
-        if user_id != OWNER_ID:
-            await update.message.reply_text("🚫 Akses ditolak!")
-            return
-        
-        # Start measuring ping
+    @bot.on(events.NewMessage(pattern=r'^\.ping$'))
+    async def ping_handler(event):
+        """Handle .ping command"""
         start_time = time.time()
-        msg = await update.message.reply_text("🔄 Mengukur ping...")
+        
+        # Kirim pesan awal
+        msg = await event.reply("`Pinging...`")
+        
+        # Hitung ping
         end_time = time.time()
+        ping_time = (end_time - start_time) * 1000
         
-        ping_ms = (end_time - start_time) * 1000
+        # Pilih icon random
+        ping_icon = random.choice(PING_ICONS)
+        speed_icon = random.choice(SPEED_ICONS)
+        owner_icon = random.choice(OWNER_ICONS)
         
-        # Check connection status
-        is_connected = user_client.is_connected()
-        is_authorized = False
-        user_info = "Tidak diketahui"
+        # Ambil info owner
+        try:
+            owner_entity = await bot.get_entity(OWNER_ID)
+            owner_name = owner_entity.first_name if hasattr(owner_entity, 'first_name') else "Owner"
+            owner_link = f'<a href="tg://user?id={OWNER_ID}">{owner_name}</a>'
+        except:
+            owner_link = f'<a href="tg://user?id={OWNER_ID}">Owner</a>'
         
-        if is_connected:
-            try:
-                is_authorized = await user_client.is_user_authorized()
-                if is_authorized:
-                    me = await user_client.get_me()
-                    user_info = f"{me.first_name or 'No name'}"
-                    if me.username:
-                        user_info += f" (@{me.username})"
-            except Exception as e:
-                logger.error(f"Error getting user info: {e}")
-        
-        # Prepare response
-        status_emoji = "🟢" if is_authorized else "🔴"
-        status_text = "ONLINE" if is_authorized else "OFFLINE"
-        
-        response = (
-            f"🤖 **PING USERBOT**\n\n"
-            f"**Status:** {status_emoji} {status_text}\n"
-            f"**Ping:** `{ping_ms:.2f} ms`\n"
-            f"**Uptime:** `{ping_system.get_uptime()}`\n"
-            f"**Akun:** {user_info}\n"
-            f"**Koneksi:** {'✅' if is_connected else '❌'}\n\n"
-            f"**Owner ID:** `{OWNER_ID}`"
+        # Format pesan dengan HTML blockquote
+        message = (
+            f"<blockquote>{ping_icon} ᴘᴏɴɢ: {ping_time:.2f}ᴍs\n"
+            f"{speed_icon} sᴘᴇᴇᴅ: {random.uniform(200, 600):.2f}ᴍs\n"
+            f"{owner_icon} ᴏᴡɴʀ: — {owner_link}</blockquote>\n\n"
+            f"<blockquote>© USERBOT @ApckUbot</blockquote>"
         )
         
-        await msg.edit_text(response, parse_mode='Markdown')
-    
-    # Add handler to bot
-    bot_app.add_handler(CommandHandler('ping', ping))
-    
-    logger.info("✅ Ping plugin loaded")
+        # Edit pesan
+        await msg.edit(message, parse_mode="html")
