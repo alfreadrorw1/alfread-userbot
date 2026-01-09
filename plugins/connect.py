@@ -1,212 +1,226 @@
-import json
-import os
-import time
 import asyncio
-from datetime import datetime
-from telethon import TelegramClient, events, Button
-from telethon.sessions import StringSession, MemorySession
-from telethon.errors import SessionPasswordNeededError, AuthKeyError
-from pymongo import MongoClient, errors
-import config
-import pickle
+import logging
+from typing import Optional
 
-# MongoDB Session Storage
-class MongoSession(MemorySession):
-    def __init__(self, collection, session_name):
-        super().__init__()
-        self.collection = collection
-        self.session_name = session_name
-        self.load_session()
+from telethon import TelegramClient
+from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError
+from telethon.sessions import StringSession
+from telegram import Update
+from telegram.ext import ContextTypes, CommandHandler
 
-    def load_session(self):
-        # PERBAIKAN: Cek collection dengan benar
-        if self.collection is None:
-            return
-            
-        data = self.collection.find_one({"user_id": self.session_name})
-        if data and "session_data" in data:
-            try:
-                self._dc_id, self._server_address, self._port, self._auth_key = pickle.loads(data["session_data"])
-            except:
-                pass
+from config import config
+from plugins.mongodb import mongodb
+from plugins.utils import is_owner, UserbotManager, log_to_owner
 
-    def save(self):
-        if self.collection is None:
-            return
-            
-        data = pickle.dumps((self._dc_id, self._server_address, self._port, self._auth_key))
-        self.collection.update_one(
-            {"user_id": self.session_name},
-            {"$set": {"session_data": data, "last_update": datetime.now(), "is_active": True}},
-            upsert=True
-        )
+logger = logging.getLogger(__name__)
 
-    def delete(self):
-        if self.collection is None:
-            return
-        self.collection.delete_one({"user_id": self.session_name})
-
-# Setup MongoDB connection
-try:
-    mongo_client = MongoClient(config.MONGO_URI)
-    db = mongo_client[config.SESSION_NAME]
-    sessions_collection = db["sessions"]
-    print(f"✅ Connected to MongoDB: {config.MONGO_URI}")
-except Exception as e:
-    print(f"❌ Failed to connect to MongoDB: {e}")
-    sessions_collection = None
-
-# Global dictionaries untuk menyimpan data
-pending_verifications = {}
-active_sessions = {}
-
-# Fungsi untuk membuat userbot client
-def create_userbot_client(user_id, session_string=None):
-    """Membuat TelegramClient untuk userbot"""
-    if session_string:
-        # Gunakan session string yang disimpan
-        session = StringSession(session_string)
-    else:
-        # Buat session baru dengan MongoDB
-        session = MongoSession(sessions_collection, str(user_id))
+class ConnectHandler:
+    """Handle userbot connection commands"""
     
-    client = TelegramClient(
-        session,
-        config.API_ID,
-        config.API_HASH,
-        device_model="Alfread UserBot",
-        system_version="4.16.30-vxCUSTOM",
-        app_version="1.0.0",
-        lang_code="en",
-        system_lang_code="en-US"
-    )
-    return client
-
-# Fungsi untuk menyimpan session ke MongoDB
-def save_session_to_mongo(user_id, session_string, auto_connect=False):
-    """Menyimpan session string ke MongoDB"""
-    # PERBAIKAN: Cek collection dengan benar
-    if sessions_collection is None:
-        print("❌ Cannot save session: sessions_collection is None")
-        return False
+    def __init__(self):
+        self.phone_code_hash: Optional[str] = None
+        self.phone_number: Optional[str] = None
     
-    try:
-        session_data = {
-            "user_id": str(user_id),
-            "session_string": session_string,
-            "created_at": datetime.now(),
-            "last_used": datetime.now(),
-            "auto_connect": auto_connect,
-            "is_active": True
-        }
-        sessions_collection.update_one(
-            {"user_id": str(user_id)},
-            {"$set": session_data},
-            upsert=True
-        )
-        print(f"✅ Saved session for user {user_id} to MongoDB")
-        return True
-    except Exception as e:
-        print(f"❌ Error saving session to MongoDB: {e}")
-        return False
-
-# Fungsi untuk menghapus session dari MongoDB
-def delete_session_from_mongo(user_id):
-    """Menghapus session dari MongoDB"""
-    if sessions_collection is None:
-        return
-    sessions_collection.delete_one({"user_id": str(user_id)})
-
-# Fungsi untuk mendapatkan semua session yang aktif
-def get_all_active_sessions():
-    """Mendapatkan semua session yang aktif dari MongoDB"""
-    try:
-        if sessions_collection is None:
-            return []
-        sessions = sessions_collection.find({"is_active": True})
-        return list(sessions)
-    except:
-        return []
-
-# Fungsi untuk mendapatkan session user tertentu
-def get_user_session(user_id):
-    """Mendapatkan session user dari MongoDB"""
-    try:
-        if sessions_collection is None:
-            return None
-        return sessions_collection.find_one({"user_id": str(user_id), "is_active": True})
-    except:
-        return None
-
-# Fungsi untuk auto-restore koneksi saat restart
-async def auto_restore_connections(bot):
-    """Auto-restore semua koneksi yang aktif saat restart"""
-    print("🔄 Memulai auto-restore koneksi...")
-    
-    # PERBAIKAN: Cek collection dengan benar
-    if sessions_collection is None:
-        print("❌ Cannot auto-restore: sessions_collection is None")
-        return 0
-    
-    active_sessions_data = get_all_active_sessions()
-    restored_count = 0
-    
-    for session_data in active_sessions_data:
-        user_id = int(session_data["user_id"])
-        
-        # Skip jika session tidak memiliki string
-        if "session_string" not in session_data:
-            continue
-        
-        # Cek apakah user ingin auto-connect
-        if not session_data.get("auto_connect", False):
-            continue
-            
+    async def save_session_to_db(self, session_string: str):
+        """Save Telethon session to MongoDB"""
         try:
-            print(f"🔄 Mencoba restore koneksi untuk user {user_id}...")
+            collection = await mongodb.get_collection("userbot_sessions")
             
-            # Buat client dari session string
-            client = create_userbot_client(user_id, session_data["session_string"])
+            session_data = {
+                "_id": "current_session",
+                "session_string": session_string,
+                "updated_at": asyncio.get_event_loop().time(),
+                "phone_number": self.phone_number
+            }
             
-            # Coba connect
-            await client.connect()
+            await collection.update_one(
+                {"_id": "current_session"},
+                {"$set": session_data},
+                upsert=True
+            )
             
-            # Verifikasi koneksi
-            if await client.is_user_authorized():
-                # Simpan ke active sessions
-                active_sessions[user_id] = client
-                
-                # AUTO-LOAD SEMUA PLUGINS menggunakan sistem baru
-                from plugins import auto_load_all_plugins_for_client
-                await auto_load_all_plugins_for_client(client, user_id)
-                
-                print(f"✅ Berhasil restore koneksi untuk user {user_id}")
-                restored_count += 1
-                    
-            else:
-                print(f"❌ Session tidak valid untuk user {user_id}")
-                # Hapus session yang tidak valid
-                delete_session_from_mongo(user_id)
-                
-        except AuthKeyError:
-            print(f"❌ Session expired untuk user {user_id}")
-            # Hapus session yang expired
-            delete_session_from_mongo(user_id)
+            logger.info("✅ Session saved to MongoDB")
+            return True
         except Exception as e:
-            print(f"❌ Error restoring connection untuk user {user_id}: {e}")
+            logger.error(f"❌ Failed to save session: {e}")
+            return False
     
-    print(f"✅ Auto-restore selesai: {restored_count} koneksi berhasil di-restore")
-    return restored_count
+    async def load_session_from_db(self) -> Optional[str]:
+        """Load Telethon session from MongoDB"""
+        try:
+            collection = await mongodb.get_collection("userbot_sessions")
+            session_data = await collection.find_one({"_id": "current_session"})
+            
+            if session_data and "session_string" in session_data:
+                logger.info("✅ Session loaded from MongoDB")
+                return session_data["session_string"]
+            return None
+        except Exception as e:
+            logger.error(f"❌ Failed to load session: {e}")
+            return None
+    
+    @is_owner()
+    async def connect_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /connect command"""
+        message = update.message
+        
+        if UserbotManager.is_userbot_ready():
+            await message.reply_text("✅ Userbot is already connected!")
+            return
+        
+        await message.reply_text(
+            "🔌 *Connecting Userbot...*\n\n"
+            "Please send your phone number (with country code):\n"
+            "Example: `+6281234567890`",
+            parse_mode="Markdown"
+        )
+        
+        # Store state for phone number
+        context.user_data["awaiting_phone"] = True
+    
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle interactive connection process"""
+        message = update.message
+        text = message.text.strip()
+        
+        if not context.user_data.get("awaiting_phone"):
+            return
+        
+        # Handle phone number input
+        if context.user_data.get("awaiting_phone"):
+            self.phone_number = text
+            context.user_data["awaiting_phone"] = False
+            context.user_data["awaiting_code"] = True
+            
+            await message.reply_text(
+                f"📱 Phone number: `{text}`\n\n"
+                "Now please send the verification code you received on Telegram:",
+                parse_mode="Markdown"
+            )
+            return
+        
+        # Handle verification code
+        if context.user_data.get("awaiting_code"):
+            code = text
+            context.user_data["awaiting_code"] = False
+            
+            await message.reply_text("🔄 Verifying code...")
+            
+            # Try to load existing session first
+            session_string = await self.load_session_from_db()
+            
+            if session_string:
+                # Try to connect with existing session
+                try:
+                    client = TelegramClient(
+                        StringSession(session_string),
+                        config.api_id,
+                        config.api_hash
+                    )
+                    
+                    await client.connect()
+                    
+                    if not await client.is_user_authorized():
+                        await message.reply_text("⚠️ Session expired. Starting fresh login...")
+                        session_string = None
+                    else:
+                        UserbotManager.set_userbot(client)
+                        await message.reply_text("✅ Userbot reconnected with saved session!")
+                        await log_to_owner(f"Userbot connected with saved session", context)
+                        return
+                        
+                except Exception as e:
+                    logger.error(f"Session connection failed: {e}")
+                    session_string = None
+            
+            # New login
+            if not session_string:
+                try:
+                    client = TelegramClient(
+                        StringSession(),
+                        config.api_id,
+                        config.api_hash,
+                        device_model="Alfread UserBot",
+                        system_version="Python 3.10",
+                        app_version="1.0.0"
+                    )
+                    
+                    await client.connect()
+                    
+                    # Send code
+                    sent = await client.send_code_request(self.phone_number)
+                    self.phone_code_hash = sent.phone_code_hash
+                    
+                    # Try to sign in
+                    try:
+                        await client.sign_in(
+                            phone=self.phone_number,
+                            code=code,
+                            phone_code_hash=self.phone_code_hash
+                        )
+                    except SessionPasswordNeededError:
+                        await message.reply_text(
+                            "🔐 Two-factor authentication enabled.\n"
+                            "Please send your password:"
+                        )
+                        context.user_data["awaiting_password"] = True
+                        return
+                    
+                    # Save session
+                    session_string = client.session.save()
+                    await self.save_session_to_db(session_string)
+                    
+                    UserbotManager.set_userbot(client)
+                    await message.reply_text("✅ Userbot connected successfully!")
+                    await log_to_owner(f"Userbot connected with phone: {self.phone_number}", context)
+                    
+                except PhoneCodeInvalidError:
+                    await message.reply_text("❌ Invalid verification code. Please try /connect again.")
+                except Exception as e:
+                    logger.error(f"Connection error: {e}", exc_info=True)
+                    await message.reply_text(f"❌ Connection failed: {str(e)}")
+            
+            return
+        
+        # Handle 2FA password
+        if context.user_data.get("awaiting_password"):
+            password = text
+            context.user_data["awaiting_password"] = False
+            
+            try:
+                client = TelegramClient(
+                    StringSession(),
+                    config.api_id,
+                    config.api_hash
+                )
+                
+                await client.connect()
+                await client.sign_in(password=password)
+                
+                # Save session
+                session_string = client.session.save()
+                await self.save_session_to_db(session_string)
+                
+                UserbotManager.set_userbot(client)
+                await message.reply_text("✅ Userbot connected with 2FA!")
+                await log_to_owner("Userbot connected with 2FA", context)
+                
+            except Exception as e:
+                logger.error(f"2FA login error: {e}")
+                await message.reply_text(f"❌ 2FA login failed: {str(e)}")
 
-# Export functions
-__all__ = [
-    'create_userbot_client',
-    'save_session_to_mongo',
-    'delete_session_from_mongo',
-    'get_all_active_sessions',
-    'get_user_session',
-    'auto_restore_connections',
-    'pending_verifications',
-    'active_sessions',
-    'sessions_collection'
-]
+def setup_handlers(application):
+    """Setup command handlers"""
+    handler = ConnectHandler()
+    
+    # Command handlers
+    application.add_handler(CommandHandler("connect", handler.connect_command))
+    
+    # Message handler for interactive login
+    from telegram.ext import MessageHandler, filters
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            handler.handle_message
+        )
+    )

@@ -1,62 +1,52 @@
 import os
+from dataclasses import dataclass
+from typing import Optional
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
-# Telethon config
-API_ID = os.getenv("API_ID", "")
-API_HASH = os.getenv("API_HASH", "")
+@dataclass
+class Config:
+    """Configuration class for the bot"""
+    # Telegram API
+    api_id: int = int(os.getenv("API_ID", 0))
+    api_hash: str = os.getenv("API_HASH", "")
+    bot_token: str = os.getenv("BOT_TOKEN", "")
+    
+    # MongoDB
+    mongo_uri: str = os.getenv("MONGO_URI", "")
+    db_name: str = os.getenv("DB_NAME", "alfread_bot")
+    
+    # Bot Settings
+    owner_id: int = int(os.getenv("OWNER_ID", 0))
+    log_chat_id: Optional[int] = os.getenv("LOG_CHAT_ID")
+    
+    # Session Settings
+    session_name: str = "alfread_session"
+    
+    def validate(self) -> bool:
+        """Validate required configuration"""
+        required = [
+            (self.api_id, "API_ID"),
+            (self.api_hash, "API_HASH"),
+            (self.bot_token, "BOT_TOKEN"),
+            (self.mongo_uri, "MONGO_URI"),
+            (self.owner_id, "OWNER_ID")
+        ]
+        
+        for value, name in required:
+            if not value:
+                raise ValueError(f"Missing required environment variable: {name}")
+        
+        return True
 
-# Bot config
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-BOT_USERNAME = os.getenv("BOT_USERNAME", "")
+# Global config instance
+config = Config()
 
-# MongoDB config
-MONGO_URI = os.getenv("MONGO_URI", "")
-SESSION_NAME = os.getenv("SESSION_NAME", "userbot_sessions")
-
-# Owner ID
-OWNER_ID = os.getenv("OWNER_ID", "")
-
-# Validate required config
-def validate_config():
-    errors = []
-    
-    if not API_ID:
-        errors.append("API_ID must be set in .env file")
-    else:
-        try:
-            API_ID = int(API_ID)
-        except ValueError:
-            errors.append("API_ID must be a number")
-    
-    if not API_HASH:
-        errors.append("API_HASH must be set in .env file")
-    
-    if not BOT_TOKEN:
-        errors.append("BOT_TOKEN must be set in .env file")
-    
-    if not MONGO_URI:
-        errors.append("MONGO_URI must be set in .env file")
-    
-    if not OWNER_ID:
-        errors.append("OWNER_ID must be set in .env file")
-    else:
-        try:
-            OWNER_ID = int(OWNER_ID)
-        except ValueError:
-            errors.append("OWNER_ID must be a number")
-    
-    if errors:
-        print("❌ Configuration errors:")
-        for error in errors:
-            print(f"   - {error}")
-        raise ValueError("Invalid configuration. Please check your .env file")
-    
-    print("✅ Configuration validated successfully")
-
-# Panggil validasi saat module diimport
+# Validate on import
 try:
-    validate_config()
-except Exception as e:
+    config.validate()
+    print("✅ Configuration loaded successfully")
+except ValueError as e:
     print(f"❌ Configuration error: {e}")
