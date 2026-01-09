@@ -1,143 +1,241 @@
-import asyncio
-from pymongo import MongoClient
 from telethon import TelegramClient
-from telethon.sessions import MemorySession
 from telethon.errors import SessionPasswordNeededError
-from config import API_ID, API_HASH, BOT_TOKEN, MONGO_URI, SESSION_NAME, MODE
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters
+import config
+import asyncio
+import re
+import logging
 
-class MongoStorage:
-    def __init__(self, mongo_uri, collection_name="telethon_sessions"):
-        self.client = MongoClient(mongo_uri)
-        self.db = self.client.get_database()
-        self.collection = self.db[collection_name]
-    
-    def __getitem__(self, key):
-        doc = self.collection.find_one({"session": SESSION_NAME})
-        return doc.get(key, b"") if doc else b""
-    
-    def __setitem__(self, key, value):
-        self.collection.update_one(
-            {"session": SESSION_NAME},
-            {"$set": {key: value}},
-            upsert=True
-        )
-    
-    def __delitem__(self, key):
-        self.collection.update_one(
-            {"session": SESSION_NAME},
-            {"$unset": {key: ""}}
-        )
-    
-    def get(self, key, default=None):
-        try:
-            return self[key]
-        except KeyError:
-            return default
+# States for conversation
+PHONE, OTP, PASSWORD = range(3)
 
-# Global userbot client
-userbot_client = None
+# Store temporary data
+user_data = {}
 
-async def get_or_create_client():
-    global userbot_client
+logger = logging.getLogger(__name__)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler for /start command"""
+    user_id = update.effective_user.id
     
-    if MODE == "bot":
-        # Bot mode - create simple bot client
+    # Check if user is owner
+    if user_id != config.OWNER_ID:
+        await update.message.reply_text("❌ Maaf, bot ini hanya untuk owner.")
+        return ConversationHandler.END
+    
+    # Check if session already exists
+    try:
         client = TelegramClient(
-            MemorySession(),
-            api_id=API_ID,
-            api_hash=API_HASH
-        ).start(bot_token=BOT_TOKEN)
-        client.storage = MongoStorage(MONGO_URI)
-        return client
-    
-    elif MODE == "userbot":
-        # Userbot mode - try to load existing session
-        storage = MongoStorage(MONGO_URI)
-        client = TelegramClient(
-            MemorySession(),
-            api_id=API_ID,
-            api_hash=API_HASH
+            config.SESSION_NAME,
+            config.API_ID,
+            config.API_HASH
         )
-        client.storage = storage
         
-        try:
-            # Check if session exists in MongoDB
-            session_data = storage.collection.find_one({"session": SESSION_NAME})
-            if session_data and b"main" in session_data:
-                await client.start()
-                userbot_client = client
-                print("Userbot session loaded from MongoDB")
-                return client
-            else:
-                print("No session found in MongoDB, waiting for login via bot...")
-                # Return bot client for login interface
-                return await create_bot_client()
-        except Exception as e:
-            print(f"Error loading session: {e}")
-            return await create_bot_client()
+        await client.connect()
+        
+        if await client.is_user_authorized():
+            await update.message.reply_text(
+                "✅ Session sudah aktif!\n"
+                "Userbot sudah terhubung dengan akun Anda.\n"
+                "Gunakan /ping untuk mengecek status."
+            )
+            await client.disconnect()
+            return ConversationHandler.END
+        else:
+            await client.disconnect()
+    except Exception as e:
+        logger.error(f"Error checking session: {e}")
     
-    else:
-        raise ValueError(f"Invalid MODE: {MODE}")
-
-async def create_bot_client():
-    """Create bot client for login interface"""
-    client = TelegramClient(
-        MemorySession(),
-        api_id=API_ID,
-        api_hash=API_HASH
-    ).start(bot_token=BOT_TOKEN)
-    client.storage = MongoStorage(MONGO_URI)
-    return client
-
-async def login_userbot_via_bot(phone, code=None, password=None, mongo_client=None):
-    """Login userbot using provided credentials"""
-    global userbot_client
+    # Start login process
+    keyboard = [[InlineKeyboardButton("Batal", callback_data='cancel')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
-    storage = MongoStorage(MONGO_URI)
-    client = TelegramClient(
-        MemorySession(),
-        api_id=API_ID,
-        api_hash=API_HASH
+    await update.message.reply_text(
+        "🔑 **Login Userbot**\n\n"
+        "Masukkan nomor Telegram Anda (format internasional):\n"
+        "Contoh: +6281234567890\n\n"
+        "Ketik /cancel untuk membatalkan.",
+        reply_markup=reply_markup
     )
-    client.storage = storage
+    
+    return PHONE
+
+async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get phone number from user"""
+    phone = update.message.text.strip()
+    
+    # Validate phone number format
+    phone_pattern = r'^\+\d{10,15}$'
+    if not re.match(phone_pattern, phone):
+        await update.message.reply_text(
+            "❌ Format nomor tidak valid!\n"
+            "Gunakan format internasional: +6281234567890\n"
+            "Silakan coba lagi:"
+        )
+        return PHONE
+    
+    # Store phone number
+    user_data[update.effective_user.id] = {
+        'phone': phone,
+        'client': None
+    }
+    
+    # Initialize Telethon client
+    client = TelegramClient(
+        config.SESSION_NAME,
+        config.API_ID,
+        config.API_HASH
+    )
+    
+    await client.connect()
+    user_data[update.effective_user.id]['client'] = client
     
     try:
-        if not client.is_connected():
-            await client.connect()
+        # Send code request
+        sent_code = await client.send_code_request(phone)
+        user_data[update.effective_user.id]['phone_code_hash'] = sent_code.phone_code_hash
         
-        if code and not password:
-            # First step: send code request
-            await client.send_code_request(phone)
-            return "code_sent"
-        
-        elif code and password:
-            # Second step: sign in with code
-            try:
-                await client.sign_in(phone, code)
-            except SessionPasswordNeededError:
-                # Third step: sign in with password
-                await client.sign_in(password=password)
-        
-        elif code:
-            # Sign in with code only
-            await client.sign_in(phone, code)
-        
-        # Store session in MongoDB
-        await client.start()
-        userbot_client = client
-        
-        # Save session to MongoDB
-        session_data = client.session.save()
-        storage.collection.update_one(
-            {"session": SESSION_NAME},
-            {"$set": {"auth_key": session_data}},
-            upsert=True
+        await update.message.reply_text(
+            "📱 **Kode OTP Dikirim**\n\n"
+            "OTP telah dikirim ke Telegram Anda.\n"
+            "Masukkan kode OTP dengan format:\n"
+            "`1 2 3 4 5` (pisahkan dengan spasi)\n\n"
+            "Ketik /cancel untuk membatalkan."
         )
         
-        return "success"
-    
+        return OTP
     except Exception as e:
-        return f"error: {str(e)}"
+        logger.error(f"Error sending code: {e}")
+        await update.message.reply_text(
+            f"❌ Error: {str(e)}\n"
+            "Silakan coba lagi dengan /start"
+        )
+        await client.disconnect()
+        return ConversationHandler.END
 
-# Create client instance
-client = asyncio.run(get_or_create_client())
+async def get_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get OTP from user"""
+    user_id = update.effective_user.id
+    
+    if user_id not in user_data:
+        await update.message.reply_text("❌ Sesi tidak ditemukan. Gunakan /start")
+        return ConversationHandler.END
+    
+    otp_code = update.message.text.strip()
+    
+    # Validate OTP format (accept with or without spaces)
+    if not re.match(r'^(\d\s?){5,}$', otp_code):
+        await update.message.reply_text(
+            "❌ Format OTP tidak valid!\n"
+            "Masukkan kode dengan format:\n"
+            "`1 2 3 4 5` (pisahkan dengan spasi)\n"
+            "Atau `12345` (tanpa spasi)\n\n"
+            "Silakan coba lagi:"
+        )
+        return OTP
+    
+    # Clean OTP (remove spaces)
+    otp_code = otp_code.replace(' ', '')
+    
+    client = user_data[user_id]['client']
+    phone_code_hash = user_data[user_id]['phone_code_hash']
+    phone = user_data[user_id]['phone']
+    
+    try:
+        # Sign in with OTP
+        await client.sign_in(
+            phone=phone,
+            code=otp_code,
+            phone_code_hash=phone_code_hash
+        )
+        
+        await update.message.reply_text(
+            "✅ **Login Berhasil!**\n\n"
+            "Userbot sekarang terhubung dengan akun Anda.\n"
+            "Session tersimpan di: `alfread.session`\n\n"
+            "Gunakan /ping untuk mengecek status."
+        )
+        
+        await client.disconnect()
+        del user_data[user_id]
+        
+        return ConversationHandler.END
+        
+    except SessionPasswordNeededError:
+        await update.message.reply_text(
+            "🔒 **2FA Ditemukan**\n\n"
+            "Akun Anda memiliki Two-Factor Authentication.\n"
+            "Masukkan password 2FA Anda:\n\n"
+            "Ketik /cancel untuk membatalkan."
+        )
+        return PASSWORD
+        
+    except Exception as e:
+        logger.error(f"Error signing in: {e}")
+        await update.message.reply_text(
+            f"❌ Error: {str(e)}\n"
+            "Silakan coba lagi dengan /start"
+        )
+        await client.disconnect()
+        del user_data[user_id]
+        return ConversationHandler.END
+
+async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get 2FA password from user"""
+    user_id = update.effective_user.id
+    
+    if user_id not in user_data:
+        await update.message.reply_text("❌ Sesi tidak ditemukan. Gunakan /start")
+        return ConversationHandler.END
+    
+    password = update.message.text.strip()
+    client = user_data[user_id]['client']
+    
+    try:
+        # Sign in with password
+        await client.sign_in(password=password)
+        
+        await update.message.reply_text(
+            "✅ **Login Berhasil!**\n\n"
+            "Userbot sekarang terhubung dengan akun Anda.\n"
+            "Session tersimpan di: `alfread.session`\n\n"
+            "Gunakan /ping untuk mengecek status."
+        )
+        
+        await client.disconnect()
+        del user_data[user_id]
+        
+        return ConversationHandler.END
+        
+    except Exception as e:
+        logger.error(f"Error with 2FA: {e}")
+        await update.message.reply_text(
+            f"❌ Error: Password salah atau terjadi masalah.\n"
+            "Silakan coba lagi dengan /start"
+        )
+        await client.disconnect()
+        del user_data[user_id]
+        return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancel the conversation"""
+    user_id = update.effective_user.id
+    
+    if user_id in user_data and user_data[user_id].get('client'):
+        await user_data[user_id]['client'].disconnect()
+        del user_data[user_id]
+    
+    await update.message.reply_text("❌ Proses login dibatalkan.")
+    return ConversationHandler.END
+
+# Create conversation handler
+login_handler = ConversationHandler(
+    entry_points=[CommandHandler('start', start)],
+    states={
+        PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
+        OTP: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_otp)],
+        PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_password)],
+    },
+    fallbacks=[CommandHandler('cancel', cancel)],
+)
