@@ -1,5 +1,6 @@
 """
 MongoDB Connection Handler untuk Alfread UserBot
+Synchronous version untuk PyMongo
 """
 
 import logging
@@ -10,7 +11,7 @@ from config import Config
 logger = logging.getLogger(__name__)
 
 class MongoDB:
-    """MongoDB Connection Manager"""
+    """MongoDB Connection Manager (Synchronous)"""
     
     _client = None
     _db = None
@@ -49,10 +50,14 @@ class MongoDB:
             client = cls.get_client()
             cls._db = client[db_name]
             
-            # Buat indeks untuk koleksi user_sessions
-            cls._db.user_sessions.create_index("user_id", unique=True)
-            cls._db.user_sessions.create_index("connected_at")
-            cls._db.user_sessions.create_index([("updated_at", -1)])
+            # Buat indeks untuk koleksi user_sessions (jika belum ada)
+            try:
+                cls._db.user_sessions.create_index("user_id", unique=True)
+                cls._db.user_sessions.create_index("connected_at")
+                cls._db.user_sessions.create_index([("updated_at", -1)])
+                logger.debug("✅ MongoDB indexes created/verified")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not create indexes: {e}")
         
         return cls._db
     
@@ -74,17 +79,18 @@ class MongoDB:
 # Global database instance
 db = MongoDB.get_database()
 
-# Helper functions untuk session management
-async def save_user_session(user_id, session_data, phone=None):
+# Helper functions untuk session management (synchronous)
+def save_user_session(user_id, session_data, phone=None):
     """Simpan session user ke MongoDB"""
     try:
+        from datetime import datetime
         sessions = MongoDB.get_collection("user_sessions")
         result = sessions.update_one(
             {"user_id": user_id},
             {"$set": {
-                "session_data": session_data,
+                "session_string": session_data,
                 "phone": phone,
-                "updated_at": "datetime.now()",
+                "updated_at": datetime.now(),
                 "connected": True
             }},
             upsert=True
@@ -94,25 +100,26 @@ async def save_user_session(user_id, session_data, phone=None):
         logger.error(f"Error saving session: {e}")
         return False
 
-async def get_user_session(user_id):
+def get_user_session(user_id):
     """Dapatkan session user dari MongoDB"""
     try:
         sessions = MongoDB.get_collection("user_sessions")
         session = sessions.find_one({"user_id": user_id})
-        return session.get("session_data") if session else None
+        return session.get("session_string") if session else None
     except Exception as e:
         logger.error(f"Error getting session: {e}")
         return None
 
-async def disconnect_user_session(user_id):
+def disconnect_user_session(user_id):
     """Mark session sebagai disconnected"""
     try:
+        from datetime import datetime
         sessions = MongoDB.get_collection("user_sessions")
         result = sessions.update_one(
             {"user_id": user_id},
             {"$set": {
                 "connected": False,
-                "disconnected_at": "datetime.now()"
+                "disconnected_at": datetime.now()
             }}
         )
         return result.acknowledged
@@ -120,12 +127,12 @@ async def disconnect_user_session(user_id):
         logger.error(f"Error disconnecting session: {e}")
         return False
 
-async def get_active_sessions():
+def get_active_sessions():
     """Dapatkan semua session yang aktif"""
     try:
         sessions = MongoDB.get_collection("user_sessions")
-        active = sessions.find({"connected": True})
-        return list(active)
+        active = list(sessions.find({"connected": True}))
+        return active
     except Exception as e:
         logger.error(f"Error getting active sessions: {e}")
         return []

@@ -50,8 +50,8 @@ async def main():
         from plugins import load_plugins
         await load_plugins(bot_client)
         
-        # Cek dan load sessions dari database
-        await load_sessions_from_db()
+        # Cek dan load sessions dari database (sync version)
+        load_sessions_from_db()
         
         # Keep running
         logger.info("🤖 UserBot is now running. Press Ctrl+C to stop.")
@@ -61,8 +61,8 @@ async def main():
         logger.error(f"❌ Error starting UserBot: {e}")
         sys.exit(1)
 
-async def load_sessions_from_db():
-    """Load sessions dari MongoDB saat startup"""
+def load_sessions_from_db():
+    """Load sessions dari MongoDB saat startup (sync version)"""
     try:
         from plugins.mongodb import db
         from telethon import TelegramClient
@@ -70,10 +70,12 @@ async def load_sessions_from_db():
         from config import Config
         
         collection = db["user_sessions"]
-        active_sessions = collection.find({"connected": True})
+        
+        # Gunakan find() synchronous (PyMongo adalah synchronous)
+        active_sessions = list(collection.find({"connected": True}))
         
         count = 0
-        async for session in active_sessions:  # Note: async for jika menggunakan motor
+        for session in active_sessions:
             try:
                 user_id = session.get("user_id")
                 session_string = session.get("session_string")
@@ -88,27 +90,40 @@ async def load_sessions_from_db():
                     Config.API_HASH
                 )
                 
-                await client.connect()
-                
-                # Cek apakah session masih valid
-                if await client.is_user_authorized():
-                    # Load plugins untuk client ini
-                    from plugins import load_plugins
-                    await load_plugins(client)
+                # Connect dan cek session (gunakan asyncio.run untuk synchronous context)
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
                     
-                    # Start client di background
-                    asyncio.create_task(client.run_until_disconnected())
+                    # Connect client
+                    loop.run_until_complete(client.connect())
                     
-                    count += 1
-                    logger.info(f"✅ Loaded session for user {user_id}")
-                else:
-                    await client.disconnect()
-                    # Update status di database
-                    collection.update_one(
-                        {"user_id": user_id},
-                        {"$set": {"connected": False}}
-                    )
-                    logger.warning(f"❌ Session expired for user {user_id}")
+                    # Cek apakah session valid
+                    is_authorized = loop.run_until_complete(client.is_user_authorized())
+                    
+                    if is_authorized:
+                        # Load plugins untuk client ini
+                        from plugins import load_plugins
+                        loop.run_until_complete(load_plugins(client))
+                        
+                        # Start client di background
+                        asyncio.create_task(client.run_until_disconnected())
+                        
+                        count += 1
+                        logger.info(f"✅ Loaded session for user {user_id}")
+                    else:
+                        loop.run_until_complete(client.disconnect())
+                        # Update status di database
+                        collection.update_one(
+                            {"user_id": user_id},
+                            {"$set": {"connected": False}}
+                        )
+                        logger.warning(f"❌ Session expired for user {user_id}")
+                    
+                    loop.close()
+                    
+                except Exception as e:
+                    logger.error(f"Error connecting client for user {user_id}: {e}")
                     
             except Exception as e:
                 logger.error(f"Error loading session: {e}")
