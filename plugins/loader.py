@@ -49,7 +49,7 @@ def get_all_plugins():
         return plugins
     
     for item in os.listdir(plugins_dir):
-        if item.endswith('.py') and item not in ['__init__.py', 'connect.py', 'bot_handler.py', 'loader.py']:
+        if item.endswith('.py') and item not in ['__init__.py', 'connect.py', 'bot_handler.py', 'loader.py', 'utils.py']:
             plugin_name = item[:-3]  # Remove .py extension
             plugins.append(plugin_name)
     

@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 from telethon import events
 from plugins.connect import active_sessions
-from plugins.prefix import get_prefix_from_mongo
+from plugins.utils import get_prefix_from_mongo, format_time
 
 # List random icons untuk ping
 PING_ICONS = [
@@ -50,37 +50,34 @@ def get_session_uptime(user_id):
         print(f"Error calculating session uptime: {e}")
         return "Unknown"
 
-def format_time(seconds):
-    """Format waktu menjadi string yang mudah dibaca"""
-    seconds = int(seconds)
-    days, remainder = divmod(seconds, 86400)
-    hours, remainder = divmod(remainder, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    
-    parts = []
-    if days: parts.append(f"{days}d")
-    if hours: parts.append(f"{hours}h")
-    if minutes: parts.append(f"{minutes}m")
-    if seconds or not parts: parts.append(f"{seconds}s")
-    
-    return ' '.join(parts)
-
 async def add_ping_handler_to_client(client, user_id):
     """Add ping handler ke userbot client - AUTO-LOAD FUNCTION"""
     
     async def ping_handler(event):
         """Handler untuk command ping di userbot"""
+        # Cek apakah user memiliki session aktif
+        if user_id not in active_sessions:
+            return
+        
+        # Cek apakah event berasal dari userbot client yang sama
+        current_client = active_sessions[user_id]
+        if current_client != client:
+            return
+        
+        # Get message text
+        message_text = (event.raw_text or '').strip()
+        
         # Get current prefix dari MongoDB
         current_prefix = await get_prefix_from_mongo(user_id)
-        message_text = (event.raw_text or '').strip().lower()
         
-        # Cek apakah ini command ping
+        # Cek apakah ini command ping dengan pattern yang tepat
         is_ping = False
         
-        if current_prefix == "no" and message_text == "ping":
-            is_ping = True
+        if current_prefix == "no":
+            if message_text.lower() == "ping":
+                is_ping = True
         elif message_text.startswith(current_prefix):
-            cmd = message_text[len(current_prefix):].strip()
+            cmd = message_text[len(current_prefix):].strip().lower()
             if cmd == "ping":
                 is_ping = True
         
@@ -132,8 +129,11 @@ async def add_ping_handler_to_client(client, user_id):
         
         await ping_msg.edit(response, parse_mode='html')
     
-    # Register handler
-    client.add_event_handler(ping_handler, events.NewMessage(outgoing=True))
+    # Register handler dengan pattern yang spesifik
+    client.add_event_handler(ping_handler, events.NewMessage(
+        outgoing=True,
+        pattern=r'^(\.|!|\?|,|;|:|/|\\|@|#|\$|%|\^|&|\*|\+|=)?ping$'
+    ))
     
     print(f"✅ Added ping handler to user {user_id}")
     return True

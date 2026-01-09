@@ -653,13 +653,9 @@ async def setup_bot_handlers(bot):
             # Simpan ke active sessions
             active_sessions[user_id] = client
             
-            # Add ping handler ke client yang baru connect
-            from plugins.ping import add_ping_handler_to_client
-            await add_ping_handler_to_client(client, user_id)
-            
-            # Load semua plugins untuk client
-            from plugins.loader import load_plugins_for_client
-            await load_plugins_for_client(client, user_id)
+            # AUTO-LOAD SEMUA PLUGINS menggunakan sistem baru
+            from plugins import auto_load_all_plugins_for_client
+            await auto_load_all_plugins_for_client(client, user_id)
             
             # Simpan data user lengkap
             try:

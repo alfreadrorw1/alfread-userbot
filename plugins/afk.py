@@ -2,7 +2,7 @@ import asyncio
 import time
 from datetime import datetime
 from telethon import events
-from plugins.prefix import get_prefix_from_mongo
+from plugins.utils import get_prefix_from_mongo
 from plugins.connect import active_sessions
 
 # Dictionary untuk menyimpan status AFK
@@ -13,8 +13,6 @@ async def add_afk_handler_to_client(client, user_id):
     
     async def afk_handler(event):
         """Handler untuk command AFK"""
-        user_id = event.sender_id
-        
         # Cek apakah user memiliki session aktif
         if user_id not in active_sessions:
             return
@@ -58,14 +56,9 @@ async def add_afk_handler_to_client(client, user_id):
                 afk_data = afk_users.pop(user_id)
                 afk_duration = time.time() - afk_data["time"]
                 
-                # Format duration
-                hours, remainder = divmod(int(afk_duration), 3600)
-                minutes, seconds = divmod(remainder, 60)
-                
-                duration_text = ""
-                if hours: duration_text += f"{hours} jam "
-                if minutes: duration_text += f"{minutes} menit "
-                if seconds or not duration_text: duration_text += f"{seconds} detik"
+                # Format duration menggunakan utils
+                from plugins.utils import format_time
+                duration_text = format_time(afk_duration)
                 
                 response = (
                     "<blockquote>"
@@ -118,15 +111,10 @@ async def add_afk_handler_to_client(client, user_id):
                 if mentioned_id in afk_users:
                     afk_data = afk_users[mentioned_id]
                     
-                    # Hitung durasi AFK
+                    # Hitung durasi AFK menggunakan utils
+                    from plugins.utils import format_time
                     afk_duration = time.time() - afk_data["time"]
-                    hours, remainder = divmod(int(afk_duration), 3600)
-                    minutes, seconds = divmod(remainder, 60)
-                    
-                    duration_text = ""
-                    if hours: duration_text += f"{hours} jam "
-                    if minutes: duration_text += f"{minutes} menit "
-                    if seconds or not duration_text: duration_text += f"{seconds} detik"
+                    duration_text = format_time(afk_duration)
                     
                     # Format waktu AFK
                     afk_time = datetime.fromtimestamp(afk_data["time"]).strftime("%H:%M:%S")
@@ -144,9 +132,16 @@ async def add_afk_handler_to_client(client, user_id):
                     await event.reply(response, parse_mode='html')
                     break
     
-    # Register handlers
-    client.add_event_handler(afk_handler, events.NewMessage(outgoing=True, pattern=r'^(\.|!|\?|,|;|:|/|\\|@|#|\$|%|\^|&|\*|\+|=)?(afk|unafk)'))
-    client.add_event_handler(afk_notification_handler, events.NewMessage(incoming=True))
+    # Register handlers dengan pattern yang tepat
+    client.add_event_handler(afk_handler, events.NewMessage(
+        outgoing=True,
+        pattern=r'^(\.|!|\?|,|;|:|/|\\|@|#|\$|%|\^|&|\*|\+|=)?(afk|unafk)'
+    ))
+    
+    # Handler untuk notifikasi AFK
+    client.add_event_handler(afk_notification_handler, events.NewMessage(
+        incoming=True
+    ))
     
     print(f"✅ Added AFK handler to user {user_id}")
     return True

@@ -149,9 +149,13 @@ async def auto_restore_connections(bot):
                     
             else:
                 print(f"❌ Session tidak valid untuk user {user_id}")
+                # Hapus session yang tidak valid
+                delete_session_from_mongo(user_id)
                 
         except AuthKeyError:
             print(f"❌ Session expired untuk user {user_id}")
+            # Hapus session yang expired
+            delete_session_from_mongo(user_id)
         except Exception as e:
             print(f"❌ Error restoring connection untuk user {user_id}: {e}")
     

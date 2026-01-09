@@ -1,51 +1,10 @@
-import json
 import re
-from datetime import datetime
 from telethon import events
-from telethon.tl.custom import Button
-from plugins.connect import active_sessions, sessions_collection
+from plugins.connect import active_sessions
+from plugins.utils import get_prefix_from_mongo, save_prefix_to_mongo
 
 async def add_prefix_handler_to_client(client, user_id):
     """Add prefix handler ke userbot client - AUTO-LOAD FUNCTION"""
-    
-    async def get_prefix_from_mongo():
-        """Ambil prefix dari MongoDB"""
-        try:
-            if sessions_collection:
-                session_data = sessions_collection.find_one({"user_id": str(user_id)})
-                
-                if session_data and "prefix" in session_data:
-                    return session_data["prefix"]
-                else:
-                    # Default prefix
-                    default_prefix = "."
-                    await save_prefix_to_mongo(default_prefix)
-                    return default_prefix
-            
-            return "."
-        except Exception as e:
-            print(f"❌ Error getting prefix from MongoDB: {e}")
-            return "."
-    
-    async def save_prefix_to_mongo(prefix):
-        """Simpan prefix ke MongoDB"""
-        try:
-            if sessions_collection:
-                result = sessions_collection.update_one(
-                    {"user_id": str(user_id)},
-                    {
-                        "$set": {
-                            "prefix": prefix,
-                            "updated_at": datetime.now()
-                        }
-                    },
-                    upsert=True
-                )
-                return result.acknowledged
-            return False
-        except Exception as e:
-            print(f"❌ Error saving prefix to MongoDB: {e}")
-            return False
     
     async def prefix_handler(event):
         """Handler untuk command prefix di userbot"""
@@ -62,12 +21,13 @@ async def add_prefix_handler_to_client(client, user_id):
         message_text = (event.raw_text or '').strip()
         
         # Get current prefix dari MongoDB
-        current_prefix = await get_prefix_from_mongo()
+        current_prefix = await get_prefix_from_mongo(user_id)
         
         # Cek apakah ini command prefix
         is_prefix_command = False
         is_setprefix_command = False
         
+        # Pattern matching yang lebih tepat
         if current_prefix == "no":
             if message_text.lower() == "prefix":
                 is_prefix_command = True
@@ -134,7 +94,7 @@ async def add_prefix_handler_to_client(client, user_id):
                 new_prefix = "no"
             
             # Simpan ke MongoDB
-            success = await save_prefix_to_mongo(new_prefix)
+            success = await save_prefix_to_mongo(user_id, new_prefix)
             
             if success:
                 prefix_display = "no prefix" if new_prefix == "no" else new_prefix
@@ -153,8 +113,11 @@ async def add_prefix_handler_to_client(client, user_id):
             else:
                 await event.reply("<blockquote>❌ <b>Error:</b> Gagal menyimpan prefix ke database!</blockquote>", parse_mode='html')
     
-    # Register handler
-    client.add_event_handler(prefix_handler, events.NewMessage(outgoing=True))
+    # Register handler dengan pattern yang tepat untuk menghindari double
+    client.add_event_handler(prefix_handler, events.NewMessage(
+        outgoing=True,
+        pattern=r'^(\.|!|\?|,|;|:|/|\\|@|#|\$|%|\^|&|\*|\+|=)?(prefix|setprefix)'
+    ))
     
     print(f"✅ Added prefix handler to user {user_id}")
     return True

@@ -9,16 +9,12 @@ from plugins.connect import (
     active_sessions
 )
 from plugins.bot_handler import setup_bot_handlers
-from plugins.loader import load_plugins_for_client
-
-# Tambahkan path plugins ke sys.path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'plugins'))
 
 async def restore_sessions():
     """Memulihkan session aktif dari MongoDB"""
     try:
         if sessions_collection:
-            sessions = sessions_collection.find({})
+            sessions = sessions_collection.find({"is_active": True})
         else:
             print("❌ sessions_collection tidak tersedia")
             return
@@ -36,8 +32,9 @@ async def restore_sessions():
                     if await client.is_user_authorized():
                         active_sessions[user_id] = client
                         
-                        # Auto load semua plugins untuk client ini
-                        await load_plugins_for_client(client, user_id)
+                        # AUTO-LOAD SEMUA PLUGINS menggunakan sistem baru
+                        from plugins import auto_load_all_plugins_for_client
+                        await auto_load_all_plugins_for_client(client, user_id)
                         
                         print(f"✅ Restored session for user: {user_id}")
                     else:
@@ -48,6 +45,9 @@ async def restore_sessions():
                         
                 except Exception as e:
                     print(f"❌ Error restoring session for {user_id}: {e}")
+                    # Hapus session yang error
+                    if sessions_collection:
+                        sessions_collection.delete_one({"user_id": str(user_id)})
                     
     except Exception as e:
         print(f"❌ Error restoring sessions: {e}")
