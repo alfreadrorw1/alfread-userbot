@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
 Alfread UserBot - Telegram UserBot dengan MongoDB dan Plugin System
-Railway Compatible Version
+Railway Compatible Version dengan FloodWait handling
 """
 
 import asyncio
 import logging
 import sys
 import os
+import time
 from pathlib import Path
 
 # Setup logging
@@ -27,20 +28,12 @@ async def main():
         from config import Config
         logger.info("📱 Alfread UserBot Starting...")
         
-        # Cek struktur file
-        logger.info("📁 Checking project structure...")
-        plugins_dir = Path(__file__).parent / "plugins"
-        logger.info(f"Plugin directory: {plugins_dir}")
-        logger.info(f"Plugin directory exists: {plugins_dir.exists()}")
-        
-        if plugins_dir.exists():
-            plugin_files = list(plugins_dir.glob("*.py"))
-            logger.info(f"Found {len(plugin_files)} Python files in plugins directory:")
-            for pf in plugin_files:
-                logger.info(f"  - {pf.name}")
+        # Cek environment Railway
+        IS_RAILWAY = os.getenv("RAILWAY_ENVIRONMENT") == "production" or os.getenv("RAILWAY_SERVICE_NAME") is not None
         
         # Inisialisasi Telethon Client untuk bot
         from telethon import TelegramClient
+        from telethon.errors import FloodWaitError
         
         # Buat client bot utama
         bot_client = TelegramClient(
@@ -49,14 +42,41 @@ async def main():
             api_hash=Config.API_HASH
         )
         
-        # Mulai sebagai bot
-        if Config.BOT_TOKEN:
-            await bot_client.start(bot_token=Config.BOT_TOKEN)
-            me = await bot_client.get_me()
-            logger.info(f"🤖 Bot started as: @{me.username} (ID: {me.id})")
-        else:
-            logger.error("❌ BOT_TOKEN is required")
-            sys.exit(1)
+        # Mulai sebagai bot dengan retry mechanism
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                if Config.BOT_TOKEN:
+                    await bot_client.start(bot_token=Config.BOT_TOKEN)
+                    me = await bot_client.get_me()
+                    logger.info(f"🤖 Bot started as: @{me.username} (ID: {me.id})")
+                    break
+                else:
+                    logger.error("❌ BOT_TOKEN is required")
+                    sys.exit(1)
+                    
+            except FloodWaitError as e:
+                wait_time = e.seconds
+                logger.warning(f"⏳ FloodWait: Need to wait {wait_time} seconds")
+                
+                if wait_time > 300:  # Jika lebih dari 5 menit
+                    logger.error(f"❌ FloodWait terlalu lama ({wait_time} detik). Bot akan exit.")
+                    sys.exit(1)
+                
+                logger.info(f"⏳ Waiting {wait_time} seconds before retry...")
+                await asyncio.sleep(wait_time + 5)  # Tunggu + buffer 5 detik
+                retry_count += 1
+                
+            except Exception as e:
+                logger.error(f"❌ Error starting bot: {e}")
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.info(f"⏳ Retry {retry_count}/{max_retries} in 10 seconds...")
+                    await asyncio.sleep(10)
+                else:
+                    raise
         
         # Test MongoDB connection
         try:
@@ -73,8 +93,6 @@ async def main():
         
         if loaded_count == 0:
             logger.warning("⚠️ No plugins loaded! Check plugin directory structure")
-            # Try manual load as fallback
-            await manual_load_plugins(bot_client)
         
         # Keep running
         logger.info("🤖 UserBot is now running. Press Ctrl+C to stop.")
@@ -85,26 +103,6 @@ async def main():
     except Exception as e:
         logger.error(f"❌ Error starting UserBot: {e}")
         sys.exit(1)
-
-async def manual_load_plugins(client):
-    """Manual load plugins as fallback"""
-    logger.info("🔄 Trying manual plugin load...")
-    
-    plugins_to_load = [
-        "mongodb",
-        "connect", 
-        "ping",
-        "utils"
-    ]
-    
-    for plugin_name in plugins_to_load:
-        try:
-            module = __import__(f"plugins.{plugin_name}", fromlist=[''])
-            if hasattr(module, 'register_plugin'):
-                await module.register_plugin(client)
-                logger.info(f"✅ Manually loaded: {plugin_name}")
-        except Exception as e:
-            logger.error(f"❌ Failed to manually load {plugin_name}: {e}")
 
 if __name__ == "__main__":
     # Jalankan event loop
