@@ -1,6 +1,5 @@
 import asyncio
-import glob
-import importlib
+import sys
 import os
 from telethon import TelegramClient
 from config import API_ID, API_HASH, BOT_TOKEN
@@ -10,27 +9,15 @@ from plugins.connect import (
     active_sessions
 )
 from plugins.bot_handler import setup_bot_handlers
-from plugins.ping import setup_all_ping_handlers, add_ping_handler_to_client
+from plugins.loader import load_plugins_for_client
 
-# Load semua plugins
-async def load_plugins():
-    plugin_files = glob.glob("plugins/*.py")
-    for plugin_file in plugin_files:
-        if plugin_file.endswith("__init__.py") or plugin_file.endswith("connect.py") or plugin_file.endswith("bot_handler.py") or plugin_file.endswith("ping.py"):
-            continue
-        
-        module_name = os.path.basename(plugin_file)[:-3]
-        try:
-            importlib.import_module(f"plugins.{module_name}")
-            print(f"✅ Loaded plugin: {module_name}")
-        except Exception as e:
-            print(f"❌ Failed to load {module_name}: {e}")
+# Tambahkan path plugins ke sys.path
+sys.path.append(os.path.join(os.path.dirname(__file__), 'plugins'))
 
-# Restore active sessions dari MongoDB
 async def restore_sessions():
     """Memulihkan session aktif dari MongoDB"""
     try:
-        sessions = sessions_collection.find({})
+        sessions = sessions_collection.find({}) if sessions_collection else []
         for session_data in sessions:
             user_id = int(session_data['user_id'])
             session_string = session_data.get('session_string')
@@ -44,13 +31,14 @@ async def restore_sessions():
                     if await client.is_user_authorized():
                         active_sessions[user_id] = client
                         
-                        # Add ping handler ke client
-                        await add_ping_handler_to_client(client, user_id)
+                        # Auto load semua plugins untuk client ini
+                        await load_plugins_for_client(client, user_id)
                         
                         print(f"✅ Restored session for user: {user_id}")
                     else:
                         # Hapus session yang tidak valid
-                        sessions_collection.delete_one({"user_id": str(user_id)})
+                        if sessions_collection:
+                            sessions_collection.delete_one({"user_id": str(user_id)})
                         print(f"❌ Invalid session for user: {user_id}")
                         
                 except Exception as e:
@@ -66,18 +54,13 @@ async def main():
     print("🔧 Starting Connection Bot...")
     bot = TelegramClient('connection_bot', API_ID, API_HASH)
     await bot.start(bot_token=BOT_TOKEN)
-    print(f"✅ Bot started: @{(await bot.get_me()).username}")
+    bot_me = await bot.get_me()
+    print(f"✅ Bot started: @{bot_me.username}")
     
     # 2. Setup bot handlers
     await setup_bot_handlers(bot)
     
-    # 3. Load semua plugins
-    await load_plugins()
-    
-    # 4. Setup ping handlers untuk semua sessions
-    await setup_all_ping_handlers()
-    
-    # 5. Restore active sessions dari MongoDB
+    # 3. Restore active sessions dari MongoDB dan auto load plugins
     await restore_sessions()
     
     print("🚀 UserBot system is ready!")
