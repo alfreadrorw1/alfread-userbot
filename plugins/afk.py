@@ -8,10 +8,10 @@ from plugins.connect import active_sessions
 # Dictionary untuk menyimpan status AFK
 afk_users = {}  # Format: {user_id: {"reason": "", "time": timestamp, "client": client}}
 
-async def setup_afk_handler():
-    """Setup handler untuk fitur AFK"""
+async def add_afk_handler_to_client(client, user_id):
+    """Add AFK handler ke userbot client - AUTO-LOAD FUNCTION"""
     
-    async def afk_handler(event, client):
+    async def afk_handler(event):
         """Handler untuk command AFK"""
         user_id = event.sender_id
         
@@ -104,15 +104,8 @@ async def setup_afk_handler():
             await event.reply(response, parse_mode='html')
             return
     
-    return afk_handler
-
-async def setup_afk_notification_handler():
-    """Setup handler untuk notifikasi ketika ada yang mention user AFK"""
-    
-    async def afk_notification_handler(event, client):
-        """Handler untuk notifikasi AFK"""
-        user_id = event.sender_id
-        
+    async def afk_notification_handler(event):
+        """Handler untuk notifikasi ketika ada yang mention user AFK"""
         # Cek apakah ada user AFK yang di-mention
         if event.is_private:
             return
@@ -151,28 +144,12 @@ async def setup_afk_notification_handler():
                     await event.reply(response, parse_mode='html')
                     break
     
-    return afk_notification_handler
-
-# Fungsi untuk menambahkan handler ke userbot baru
-async def add_afk_handler_to_client(client, user_id):
-    """Add AFK handler ke userbot client"""
-    afk_handler_func = await setup_afk_handler()
-    afk_notification_func = await setup_afk_notification_handler()
+    # Register handlers
+    client.add_event_handler(afk_handler, events.NewMessage(outgoing=True, pattern=r'^(\.|!|\?|,|;|:|/|\\|@|#|\$|%|\^|&|\*|\+|=)?(afk|unafk)'))
+    client.add_event_handler(afk_notification_handler, events.NewMessage(incoming=True))
     
-    try:
-        @client.on(events.NewMessage(pattern=r'^(\.|!|\?|,|;|:|/|\\|@|#|\$|%|\^|&|\*|\+|=)?(afk|unafk)', outgoing=True))
-        async def handler(event):
-            await afk_handler_func(event, client)
-        
-        @client.on(events.NewMessage(incoming=True))
-        async def notification_handler(event):
-            await afk_notification_func(event, client)
-        
-        print(f"✅ Added AFK handler to user {user_id}")
-        return True
-    except Exception as e:
-        print(f"❌ Error adding AFK handler to user {user_id}: {e}")
-        return False
+    print(f"✅ Added AFK handler to user {user_id}")
+    return True
 
 # Export functions
 __all__ = ['add_afk_handler_to_client']

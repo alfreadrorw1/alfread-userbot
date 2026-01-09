@@ -65,8 +65,8 @@ def format_time(seconds):
     
     return ' '.join(parts)
 
-async def setup_userbot_ping(client, user_id):
-    """Setup ping handler untuk userbot tertentu"""
+async def add_ping_handler_to_client(client, user_id):
+    """Add ping handler ke userbot client - AUTO-LOAD FUNCTION"""
     
     async def ping_handler(event):
         """Handler untuk command ping di userbot"""
@@ -126,28 +126,17 @@ async def setup_userbot_ping(client, user_id):
             f"<blockquote>{icon1} ᴘᴏɴɢ: <code>{latency:.2f}ᴍs</code>\n"
             f"{icon2} ʙᴏᴛ ᴜᴘᴛɪᴍᴇ: <code>{bot_uptime}</code>\n"
             f"{icon3} sᴇssɪᴏɴ ᴜᴘᴛɪᴍᴇ: <code>{session_uptime}</code>\n"
-            f"<blockquote>{icon4} ᴏᴡɴᴇʀ: @Vantzxx</blockquote>\n"
-            f"<blockquote>☾. Userbot : Oxyluss</blockquote>\n\n"
+            f"<blockquote>{icon4} ᴏᴡɴᴇʀ: Vantzxx</blockquote>\n"
+            f"<blockquote>☾. USERBOT @Vantzxx</blockquote>\n\n"
         )
         
         await ping_msg.edit(response, parse_mode='html')
     
-    return ping_handler
-
-# Fungsi untuk menambahkan handler ke userbot baru
-async def add_ping_handler_to_client(client, user_id):
-    """Add ping handler ke userbot client yang baru connect"""
-    try:
-        ping_handler = await setup_userbot_ping(client, user_id)
-        
-        # Add event handler
-        client.add_event_handler(ping_handler, events.NewMessage())
-        
-        print(f"✅ Added ping handler to user {user_id}")
-        return True
-    except Exception as e:
-        print(f"❌ Error adding ping handler to user {user_id}: {e}")
-        return False
+    # Register handler
+    client.add_event_handler(ping_handler, events.NewMessage(outgoing=True))
+    
+    print(f"✅ Added ping handler to user {user_id}")
+    return True
 
 # Export functions
 __all__ = ['add_ping_handler_to_client', 'get_bot_uptime', 'get_session_uptime']
