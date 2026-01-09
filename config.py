@@ -1,6 +1,6 @@
 """
 Configuration Module for Alfread UserBot
-Load environment variables and provide configuration
+Railway Optimized
 """
 
 import os
@@ -12,20 +12,21 @@ load_dotenv()
 class Config:
     """Konfigurasi UserBot dari environment variables"""
     
-    # Telegram API
+    # Telegram API (WAJIB)
     API_ID = int(os.getenv("API_ID", 0))
     API_HASH = os.getenv("API_HASH", "")
     BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-    SESSION_STRING = os.getenv("SESSION_STRING", "")
     
-    # MongoDB
+    # MongoDB (WAJIB)
     MONGO_URI = os.getenv("MONGO_URI", "")
     
-    # UserBot
+    # UserBot Owner
     OWNER_ID = int(os.getenv("OWNER_ID", 0))
+    
+    # Session
     SESSION_NAME = os.getenv("SESSION_NAME", "alfread")
     
-    # Railway
+    # Railway Detection
     RAILWAY_ENVIRONMENT = os.getenv("RAILWAY_ENVIRONMENT", "")
     RAILWAY_SERVICE_NAME = os.getenv("RAILWAY_SERVICE_NAME", "")
     
@@ -37,27 +38,41 @@ class Config:
         """Validasi konfigurasi untuk Railway"""
         errors = []
         
-        if not cls.API_ID:
-            errors.append("API_ID tidak ditemukan")
+        if not cls.API_ID or cls.API_ID == 0:
+            errors.append("API_ID tidak ditemukan atau 0")
+        
         if not cls.API_HASH:
             errors.append("API_HASH tidak ditemukan")
-        
-        # Cek apakah di Railway
-        is_railway = cls.RAILWAY_ENVIRONMENT or cls.RAILWAY_SERVICE_NAME
-        
-        if is_railway:
-            # Di Railway, butuh SESSION_STRING atau BOT_TOKEN
-            if not cls.SESSION_STRING and not cls.BOT_TOKEN:
-                errors.append("Di Railway butuh SESSION_STRING atau BOT_TOKEN")
-        
+            
+        if not cls.BOT_TOKEN:
+            errors.append("BOT_TOKEN tidak ditemukan (diperlukan untuk Railway)")
+            
+        if not cls.MONGO_URI:
+            errors.append("MONGO_URI tidak ditemukan")
+            
         if errors:
-            raise ValueError(f"Konfigurasi tidak lengkap: {', '.join(errors)}")
+            error_msg = "Konfigurasi tidak lengkap:\n" + "\n".join(f"• {e}" for e in errors)
+            raise ValueError(error_msg)
         
+        logger = logging.getLogger(__name__)
+        logger.info("✅ Configuration validated successfully")
         return True
+
+# Setup logging untuk config
+import logging
+logging.basicConfig(level=logging.INFO)
 
 # Validasi saat import
 try:
     Config.validate()
-    print("✅ Konfigurasi valid")
 except ValueError as e:
-    print(f"⚠️  Peringatan: {e}")
+    print(f"❌ {e}")
+    print("\n📋 Pastikan environment variables sudah diisi di Railway:")
+    print("1. Buka project di Railway Dashboard")
+    print("2. Pergi ke tab 'Variables'")
+    print("3. Tambahkan variables yang diperlukan:")
+    print("   • API_ID, API_HASH, BOT_TOKEN")
+    print("   • MONGO_URI, OWNER_ID")
+    print("\n4. Redeploy aplikasi")
+    # Jangan exit di Railway, biarkan bisa berjalan dengan config partial
+    # sys.exit(1)

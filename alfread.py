@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Alfread UserBot - Telegram UserBot dengan MongoDB dan Plugin System
-Entry point utama - Railway Compatible
+Railway Compatible Version
 """
 
 import asyncio
@@ -9,6 +9,7 @@ import logging
 import sys
 import os
 from pathlib import Path
+from datetime import datetime
 
 # Setup logging
 logging.basicConfig(
@@ -20,6 +21,57 @@ logger = logging.getLogger(__name__)
 # Tambahkan path project
 sys.path.insert(0, str(Path(__file__).parent))
 
+async def load_sessions_from_db():
+    """Load sessions dari MongoDB saat startup"""
+    try:
+        from plugins.mongodb import get_active_sessions
+        from telethon import TelegramClient
+        from telethon.sessions import StringSession
+        from config import Config
+        
+        active_sessions = await get_active_sessions()
+        logger.info(f"📂 Found {len(active_sessions)} active sessions in database")
+        
+        clients = []
+        for session_data in active_sessions:
+            try:
+                user_id = session_data.get("user_id")
+                session_string = session_data.get("session_string")
+                
+                if not session_string:
+                    continue
+                
+                # Buat client dari session string
+                client = TelegramClient(
+                    StringSession(session_string),
+                    Config.API_ID,
+                    Config.API_HASH
+                )
+                
+                await client.connect()
+                
+                # Cek apakah session masih valid
+                if await client.is_user_authorized():
+                    # Load plugins untuk client ini
+                    from plugins import load_plugins
+                    await load_plugins(client)
+                    
+                    clients.append(client)
+                    logger.info(f"✅ Loaded session for user {user_id}")
+                else:
+                    await client.disconnect()
+                    logger.warning(f"❌ Session expired for user {user_id}")
+                    
+            except Exception as e:
+                logger.error(f"Error loading session: {e}")
+                continue
+        
+        return clients
+        
+    except Exception as e:
+        logger.error(f"Error loading sessions from DB: {e}")
+        return []
+
 async def main():
     """Fungsi utama untuk menjalankan UserBot"""
     try:
@@ -30,55 +82,45 @@ async def main():
         # Cek environment Railway
         IS_RAILWAY = os.getenv("RAILWAY_ENVIRONMENT") == "production" or os.getenv("RAILWAY_SERVICE_NAME") is not None
         
-        # Inisialisasi Telethon Client
+        # Inisialisasi Telethon Client untuk bot
         from telethon import TelegramClient
-        from telethon.errors import SessionPasswordNeededError
-        
-        # Buat client dengan session string jika ada
-        session_string = os.getenv("SESSION_STRING", "")
-        
-        client = TelegramClient(
-            session=Config.SESSION_NAME,
-            api_id=Config.API_ID,
-            api_hash=Config.API_HASH,
-            device_model="Alfread UserBot",
-            system_version="Python 3.10+",
-            app_version="1.0.0"
-        )
-        
-        # Load plugins
-        from plugins import load_plugins
-        await load_plugins(client)
-        
-        # Mulai client dengan cara yang berbeda untuk Railway
-        logger.info("🚀 Connecting to Telegram...")
         
         if IS_RAILWAY:
             logger.info("⚡ Running in Railway environment")
-            
-            # Coba gunakan bot token jika ada
-            if Config.BOT_TOKEN:
-                await client.start(bot_token=Config.BOT_TOKEN)
-                logger.info("🤖 Started as Bot")
-            else:
-                # Cek jika session sudah ada
-                if not os.path.exists(f"{Config.SESSION_NAME}.session"):
-                    logger.error("❌ No session file found for Railway deployment")
-                    logger.info("ℹ️ Please create session locally first, then upload to Railway")
-                    sys.exit(1)
-                
-                await client.start()
-        else:
-            # Local environment - bisa minta input
-            await client.start()
         
-        # Get bot info
-        me = await client.get_me()
-        logger.info(f"✅ Logged in as: {me.first_name} (ID: {me.id})")
+        # Buat client bot utama
+        bot_client = TelegramClient(
+            session="alfread_bot",
+            api_id=Config.API_ID,
+            api_hash=Config.API_HASH
+        )
+        
+        # Mulai sebagai bot
+        if Config.BOT_TOKEN:
+            await bot_client.start(bot_token=Config.BOT_TOKEN)
+            me = await bot_client.get_me()
+            logger.info(f"🤖 Bot started as: @{me.username}")
+        else:
+            logger.error("❌ BOT_TOKEN is required for Railway deployment")
+            sys.exit(1)
+        
+        # Load sessions dari database
+        user_clients = await load_sessions_from_db()
+        logger.info(f"👥 Loaded {len(user_clients)} user sessions")
+        
+        # Load plugins untuk bot
+        from plugins import load_plugins
+        await load_plugins(bot_client)
         
         # Keep running
         logger.info("🤖 UserBot is now running. Press Ctrl+C to stop.")
-        await client.run_until_disconnected()
+        
+        # Jalankan semua clients
+        tasks = [bot_client.run_until_disconnected()]
+        for client in user_clients:
+            tasks.append(client.run_until_disconnected())
+        
+        await asyncio.gather(*tasks)
         
     except Exception as e:
         logger.error(f"❌ Error starting UserBot: {e}")
