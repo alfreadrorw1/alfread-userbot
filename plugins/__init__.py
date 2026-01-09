@@ -4,13 +4,14 @@ Auto-load semua plugin dari folder plugins
 """
 
 import importlib
-import pkgutil
 import logging
-import os
 import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Track loaded plugins untuk mencegah double loading
+_loaded_plugins = set()
 
 async def load_plugins(client):
     """Load semua plugin dari folder plugins"""
@@ -31,32 +32,22 @@ async def load_plugins(client):
             if item.is_file() and item.suffix == '.py' and item.name != '__init__.py':
                 module_name = item.stem
                 
+                # Skip jika sudah di-load
+                if module_name in _loaded_plugins:
+                    logger.debug(f"⚠️ Plugin {module_name} sudah di-load, skipping...")
+                    continue
+                
                 try:
                     logger.info(f"🔄 Loading plugin: {module_name}")
                     
-                    # Import module menggunakan importlib
-                    spec = importlib.util.spec_from_file_location(
-                        f"plugins.{module_name}", 
-                        str(item)
-                    )
-                    
-                    if spec is None:
-                        logger.warning(f"⚠️ Cannot load spec for: {module_name}")
-                        continue
-                    
-                    module = importlib.util.module_from_spec(spec)
-                    sys.modules[f"plugins.{module_name}"] = module
-                    
-                    try:
-                        spec.loader.exec_module(module)
-                    except Exception as e:
-                        logger.error(f"❌ Error executing module {module_name}: {e}")
-                        continue
+                    # Import module
+                    module = importlib.import_module(f".{module_name}", package="plugins")
                     
                     # Jika module memiliki fungsi 'register_plugin'
                     if hasattr(module, 'register_plugin'):
                         try:
                             await module.register_plugin(client)
+                            _loaded_plugins.add(module_name)
                             loaded_plugins.append(module_name)
                             logger.info(f"✅ Plugin loaded: {module_name}")
                         except Exception as e:

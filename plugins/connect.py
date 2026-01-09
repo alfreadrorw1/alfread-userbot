@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # Global variable untuk menyimpan clients yang aktif
 active_userbots = {}
 pending_logins = {}
+last_start_time = {}  # Untuk mencegah double start
 
 async def register_plugin(bot_client):
     """Register plugin connect ke bot client"""
@@ -24,10 +25,26 @@ async def register_plugin(bot_client):
     async def start_handler(event):
         """Handler untuk command /start"""
         user_id = event.sender_id
+        current_time = datetime.now().timestamp()
+        
+        # Cek cooldown (minimal 2 detik antara /start)
+        if user_id in last_start_time:
+            time_diff = current_time - last_start_time[user_id]
+            if time_diff < 2:
+                logger.info(f"⏳ Cooldown untuk user {user_id}")
+                return
+        
+        last_start_time[user_id] = current_time
         
         # Cek apakah sudah login
         if user_id in active_userbots:
-            await event.reply(
+            try:
+                # Hapus pesan /start
+                await event.delete()
+            except:
+                pass
+            
+            await event.respond(
                 "✅ **Anda sudah terhubung dengan UserBot!**\n\n"
                 "Gunakan perintah `.help` untuk melihat daftar perintah yang tersedia."
             )
@@ -35,11 +52,19 @@ async def register_plugin(bot_client):
         
         # Kirim menu connect
         buttons = [
-            [Button.inline("🔗 Connect UserBot", data="connect_userbot")],
-            [Button.inline("ℹ️ Bantuan", data="help_info")]
+            [Button.inline("🔗 Connect UserBot", b"connect_userbot")],
+            [Button.inline("ℹ️ Bantuan", b"help_info")]
         ]
         
-        await event.reply(
+        # Hapus pesan /start
+        try:
+            await event.delete()
+        except:
+            pass
+        
+        # Kirim pesan sekali saja
+        await bot_client.send_message(
+            event.chat_id,
             "🤖 **Selamat datang di Alfread UserBot!**\n\n"
             "Saya adalah assistant bot untuk mengelola UserBot premium Anda.\n\n"
             "**Fitur Utama:**\n"
@@ -55,6 +80,12 @@ async def register_plugin(bot_client):
     async def connect_handler(event):
         """Handler untuk tombol connect"""
         user_id = event.sender_id
+        
+        # Hapus pesan sebelumnya
+        try:
+            await event.delete()
+        except:
+            pass
         
         # Cek apakah user adalah owner
         if user_id != Config.OWNER_ID:
@@ -75,16 +106,68 @@ async def register_plugin(bot_client):
             "   `.session your_session_string_here`\n\n"
             "Ketik `.cancel` untuk membatalkan.",
             buttons=[
-                [Button.inline("❌ Batal", data="cancel_login")]
+                [Button.inline("❌ Batal", b"cancel_login")]
             ]
         )
         
         # Simpan state
         pending_logins[user_id] = {'state': 'awaiting_input'}
     
+    @bot_client.on(events.CallbackQuery(data=b'help_info'))
+    async def help_handler(event):
+        """Handler untuk tombol bantuan"""
+        help_text = (
+            "📖 **Bantuan Alfread UserBot**\n\n"
+            "**Cara Connect UserBot:**\n"
+            "1. Klik tombol 'Connect UserBot'\n"
+            "2. Kirim nomor telepon (format internasional)\n"
+            "   Contoh: +6281234567890\n"
+            "3. Masukkan kode OTP yang dikirim ke Telegram Anda\n"
+            "4. Jika ada 2FA, masukkan password 2FA\n\n"
+            "**Perintah yang tersedia:**\n"
+            "• `/start` - Mulai bot\n"
+            "• `.ping` - Cek status bot\n"
+            "• `.help` - Tampilkan bantuan\n"
+            "• `.debug` - Info sistem\n\n"
+            "**Untuk Railway Deployment:**\n"
+            "Gunakan session string yang sudah digenerate:\n"
+            "`.session your_session_string`"
+        )
+        
+        await event.edit(
+            help_text,
+            buttons=[
+                [Button.inline("🔙 Kembali", b"back_to_start")]
+            ]
+        )
+    
+    @bot_client.on(events.CallbackQuery(data=b'back_to_start'))
+    async def back_handler(event):
+        """Handler untuk kembali ke start"""
+        user_id = event.sender_id
+        
+        # Reset last start time
+        last_start_time[user_id] = datetime.now().timestamp() - 10
+        
+        # Panggil start handler
+        await start_handler(event)
+    
+    @bot_client.on(events.CallbackQuery(data=b'cancel_login'))
+    async def cancel_callback_handler(event):
+        """Handler untuk tombol cancel"""
+        user_id = event.sender_id
+        
+        if user_id in pending_logins:
+            del pending_logins[user_id]
+        
+        await event.edit(
+            "❌ **Login dibatalkan.**\n\n"
+            "Ketik /start untuk memulai lagi."
+        )
+    
     @bot_client.on(events.NewMessage(pattern=r'^\.cancel$'))
     async def cancel_handler(event):
-        """Handler untuk cancel login"""
+        """Handler untuk cancel login via command"""
         user_id = event.sender_id
         
         if user_id in pending_logins:
@@ -118,51 +201,6 @@ async def register_plugin(bot_client):
         
         session_string = event.pattern_match.group(1)
         await process_session_string(bot_client, event, user_id, session_string)
-    
-    @bot_client.on(events.CallbackQuery(data=b'cancel_login'))
-    async def cancel_callback_handler(event):
-        """Handler untuk tombol cancel"""
-        user_id = event.sender_id
-        
-        if user_id in pending_logins:
-            del pending_logins[user_id]
-        
-        await event.edit(
-            "❌ **Login dibatalkan.**\n\n"
-            "Ketik /start untuk memulai lagi."
-        )
-    
-    @bot_client.on(events.CallbackQuery(data=b'help_info'))
-    async def help_handler(event):
-        """Handler untuk bantuan"""
-        help_text = (
-            "📖 **Bantuan Alfread UserBot**\n\n"
-            "**Cara Connect UserBot:**\n"
-            "1. Klik tombol 'Connect UserBot'\n"
-            "2. Kirim nomor telepon (format internasional)\n"
-            "   Contoh: +6281234567890\n"
-            "3. Masukkan kode OTP yang dikirim ke Telegram Anda\n"
-            "4. Jika ada 2FA, masukkan password 2FA\n\n"
-            "**Perintah yang tersedia:**\n"
-            "• `/start` - Mulai bot\n"
-            "• `.ping` - Cek status bot\n"
-            "• `.help` - Tampilkan bantuan\n\n"
-            "**Untuk Railway Deployment:**\n"
-            "Gunakan session string yang sudah digenerate:\n"
-            "`.session your_session_string`"
-        )
-        
-        await event.edit(
-            help_text,
-            buttons=[
-                [Button.inline("🔙 Kembali", data="back_to_start")]
-            ]
-        )
-    
-    @bot_client.on(events.CallbackQuery(data=b'back_to_start'))
-    async def back_handler(event):
-        """Handler untuk kembali ke start"""
-        await start_handler(event)
     
     @bot_client.on(events.NewMessage(pattern=r'^\d{5}$'))
     async def otp_handler(event):
@@ -247,7 +285,7 @@ async def process_session_string(bot_client, event, user_id, session_string):
             await userbot_client.disconnect()
             return
         
-        # Simpan session ke database menggunakan MongoDB class
+        # Simpan session ke database
         from plugins.mongodb import MongoDB
         collection = MongoDB.get_collection("user_sessions")
         
@@ -303,7 +341,7 @@ async def handle_otp_code(bot_client, event, user_id):
             # Success - dapatkan session string
             session_string = userbot_client.session.save()
             
-            # Simpan ke database menggunakan MongoDB class
+            # Simpan ke database
             from plugins.mongodb import MongoDB
             collection = MongoDB.get_collection("user_sessions")
             
@@ -384,7 +422,7 @@ async def handle_password(bot_client, event, user_id):
         # Success - dapatkan session string
         session_string = userbot_client.session.save()
         
-        # Simpan ke database menggunakan MongoDB class
+        # Simpan ke database
         from plugins.mongodb import MongoDB
         collection = MongoDB.get_collection("user_sessions")
         
@@ -438,3 +476,9 @@ async def start_userbot_client(client):
         await client.run_until_disconnected()
     except Exception as e:
         logger.error(f"Error in userbot client: {e}")
+
+# Handler untuk testing
+@bot_client.on(events.NewMessage(pattern='^\.test$'))
+async def test_handler(event):
+    """Test handler"""
+    await event.reply("✅ Bot berfungsi dengan baik!")
