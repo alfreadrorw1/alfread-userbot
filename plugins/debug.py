@@ -1,6 +1,6 @@
 """
 Debug Plugin untuk Alfread UserBot
-Command untuk debugging dan info system
+Command /debug untuk melihat info system
 """
 
 import logging
@@ -12,25 +12,23 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
-# Handler tracker
-_debug_handler = None
-_help_handler = None
-
 async def register_plugin(client):
-    """Register plugin debug - dipanggil sekali saja"""
-    global _debug_handler, _help_handler
+    """Register plugin debug - Simple version"""
     
-    # Remove existing handlers if any
-    if _debug_handler:
-        client.remove_event_handler(_debug_handler)
-    if _help_handler:
-        client.remove_event_handler(_help_handler)
+    # Cek jika sudah registered
+    if hasattr(client, '_debug_registered') and client._debug_registered:
+        logger.warning("⚠️ Debug plugin already registered")
+        return
     
     @client.on(events.NewMessage(pattern=r'^/debug$'))
     async def debug_handler(event):
         """Command /debug untuk melihat info system"""
         
-        logger.info(f"Received /debug command from {event.sender_id}")
+        # Cek jika event sudah diproses (anti-spam)
+        if hasattr(event, '_processed') and event._processed:
+            return
+        
+        event._processed = True
         
         # Get system info
         python_version = sys.version
@@ -66,13 +64,15 @@ async def register_plugin(client):
         
         await event.reply(debug_info)
     
-    _debug_handler = debug_handler
-    
     @client.on(events.NewMessage(pattern=r'^/help$'))
     async def help_handler(event):
         """Command /help untuk bantuan"""
         
-        logger.info(f"Received /help command from {event.sender_id}")
+        # Cek jika event sudah diproses
+        if hasattr(event, '_processed') and event._processed:
+            return
+        
+        event._processed = True
         
         help_text = """
 📖 **Alfread UserBot Commands**
@@ -87,15 +87,10 @@ async def register_plugin(client):
 • `/connect` - Connect user account to bot
 • `/disconnect` - Disconnect user account
 • `/session` - Check session status
-
-**Plugin System:**
-• Modular plugin architecture
-• MongoDB database support
-• Railway deployment ready
 """
         
         await event.reply(help_text)
     
-    _help_handler = help_handler
-    
+    # Mark as registered
+    client._debug_registered = True
     logger.info("✅ Debug plugin loaded")
