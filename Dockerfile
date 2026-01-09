@@ -1,37 +1,32 @@
+# Dockerfile untuk Bot Telegram dengan kemampuan Voice Chat
+# Gunakan image Python resmi versi 3.9 sebagai base
 FROM python:3.9-slim
 
+# Set working directory di dalam container
 WORKDIR /app
 
-# Install system dependencies
+# Install dependensi sistem yang diperlukan
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
-    make \
     libffi-dev \
     libssl-dev \
-    python3-dev \
-    build-essential \
-    curl \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Salin file requirements.txt terlebih dahulu (untuk caching layer Docker)
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && pip install --no-cache-dir -r requirements.txt
+# Install dependensi Python
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Salin seluruh kode aplikasi ke dalam container
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p data logs sessions
+# Buat user non-root untuk keamanan
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+USER appuser
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV TZ=Asia/Jakarta
-
-# Run the bot
+# Jalankan bot dengan file utama alfread.py
 CMD ["python", "alfread.py"]
