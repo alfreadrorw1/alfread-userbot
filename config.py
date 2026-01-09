@@ -11,7 +11,15 @@ OWNER_ID = int(os.getenv("OWNER_ID", 0))
 SESSION_NAME = os.getenv("SESSION_NAME", "alfread")
 
 # Validation
-if not all([BOT_TOKEN, API_ID, API_HASH, OWNER_ID]):
-    raise ValueError("Please set all required environment variables")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN tidak ditemukan di environment variables")
+if not API_ID:
+    raise ValueError("API_ID tidak ditemukan di environment variables")
+if not API_HASH:
+    raise ValueError("API_HASH tidak ditemukan di environment variables")
+if not OWNER_ID:
+    raise ValueError("OWNER_ID tidak ditemukan di environment variables")
 
-print("✅ Config loaded successfully")
+print(f"✅ Config loaded: Bot Token: {'*' * 10}{BOT_TOKEN[-5:] if BOT_TOKEN else ''}")
+print(f"✅ API ID: {API_ID}")
+print(f"✅ Owner ID: {OWNER_ID}")
