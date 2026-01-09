@@ -26,7 +26,7 @@ def save_sessions(data):
     with open(SESSION_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
-async def setup(bot):
+async def setup(bot, user):
     """Setup connect plugin"""
     
     active_sessions = {}
