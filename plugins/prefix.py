@@ -1,11 +1,9 @@
 import json
 import re
+from datetime import datetime
 from telethon import events
 from telethon.tl.custom import Button
-from plugins.connect import active_sessions
-
-# Collection untuk prefix di MongoDB
-from plugins.connect import sessions_collection
+from plugins.connect import active_sessions, sessions_collection
 
 async def setup_prefix_handler():
     """Setup handler untuk mengatur prefix"""
@@ -26,12 +24,12 @@ async def setup_prefix_handler():
         # Get message text
         message_text = (event.raw_text or '').strip()
         
+        # Get current prefix dari MongoDB
+        current_prefix = await get_prefix_from_mongo(user_id)
+        
         # Cek apakah ini command prefix
         is_prefix_command = False
         is_setprefix_command = False
-        
-        # Get current prefix dari MongoDB
-        current_prefix = await get_prefix_from_mongo(user_id)
         
         if current_prefix == "no":
             if message_text.lower() == "prefix":
@@ -51,14 +49,20 @@ async def setup_prefix_handler():
         # Handler untuk .prefix
         if is_prefix_command:
             prefix_text = "`no prefix`" if current_prefix == "no" else f"`{current_prefix}`"
-            await event.reply(
-                f"**Current Prefix:** {prefix_text}\n\n"
-                f"**Usage:**\n"
-                f"• `{current_prefix if current_prefix != 'no' else ''}ping` - Test connection\n"
-                f"• `{current_prefix if current_prefix != 'no' else ''}setprefix [new_prefix]` - Change prefix\n"
-                f"• `{current_prefix if current_prefix != 'no' else ''}prefix` - Show current prefix\n\n"
-                f"**Note:** Use 'no' to disable prefix (commands without prefix)"
+            
+            response = (
+                "<blockquote>"
+                "<b>⚙️ <i>Current Prefix</i></b>\n\n"
+                f"<b>• Prefix:</b> {prefix_text}\n\n"
+                "<b>📝 <i>Usage:</i></b>\n"
+                f"• <code>{current_prefix if current_prefix != 'no' else ''}ping</code> - Test connection\n"
+                f"• <code>{current_prefix if current_prefix != 'no' else ''}setprefix [new_prefix]</code> - Change prefix\n"
+                f"• <code>{current_prefix if current_prefix != 'no' else ''}prefix</code> - Show current prefix\n\n"
+                "<i>Note: Use 'no' to disable prefix (commands without prefix)</i>"
+                "</blockquote>"
             )
+            
+            await event.reply(response, parse_mode='html')
             return
         
         # Handler untuk .setprefix
@@ -67,22 +71,26 @@ async def setup_prefix_handler():
             parts = message_text.split()
             
             if len(parts) < 2:
-                await event.reply(
-                    "**Usage:**\n"
-                    f"`{'setprefix' if current_prefix == 'no' else current_prefix + 'setprefix'} [new_prefix]`\n\n"
-                    f"**Examples:**\n"
-                    f"• `{'setprefix' if current_prefix == 'no' else current_prefix + 'setprefix'} .`\n"
-                    f"• `{'setprefix' if current_prefix == 'no' else current_prefix + 'setprefix'} !`\n"
-                    f"• `{'setprefix' if current_prefix == 'no' else current_prefix + 'setprefix'} no` (disable prefix)\n\n"
-                    f"**Current:** `{current_prefix if current_prefix != 'no' else 'no prefix'}`"
+                help_text = (
+                    "<blockquote>"
+                    "<b>📖 <i>Usage:</i></b>\n"
+                    f"<code>{'setprefix' if current_prefix == 'no' else current_prefix + 'setprefix'} [new_prefix]</code>\n\n"
+                    "<b>💡 <i>Examples:</i></b>\n"
+                    f"• <code>{'setprefix' if current_prefix == 'no' else current_prefix + 'setprefix'} .</code>\n"
+                    f"• <code>{'setprefix' if current_prefix == 'no' else current_prefix + 'setprefix'} !</code>\n"
+                    f"• <code>{'setprefix' if current_prefix == 'no' else current_prefix + 'setprefix'} ?</code>\n"
+                    f"• <code>{'setprefix' if current_prefix == 'no' else current_prefix + 'setprefix'} no</code> (disable prefix)\n\n"
+                    f"<b>Current:</b> <code>{current_prefix if current_prefix != 'no' else 'no prefix'}</code>"
+                    "</blockquote>"
                 )
+                await event.reply(help_text, parse_mode='html')
                 return
             
             new_prefix = parts[1].strip()
             
             # Validasi prefix
             if len(new_prefix) > 3:
-                await event.reply("❌ **Error:** Prefix maksimal 3 karakter!")
+                await event.reply("<blockquote>❌ <b>Error:</b> Prefix maksimal 3 karakter!</blockquote>", parse_mode='html')
                 return
             
             if new_prefix.lower() == "no":
@@ -92,85 +100,76 @@ async def setup_prefix_handler():
             success = await save_prefix_to_mongo(user_id, new_prefix)
             
             if success:
-                prefix_display = "`no prefix`" if new_prefix == "no" else f"`{new_prefix}`"
-                await event.reply(
-                    f"✅ **Prefix berhasil diubah!**\n\n"
-                    f"**New Prefix:** {prefix_display}\n"
-                    f"**Example:** `{new_prefix if new_prefix != 'no' else ''}ping`\n\n"
-                    f"Perubahan akan berlaku untuk semua command."
+                prefix_display = "no prefix" if new_prefix == "no" else new_prefix
+                example_cmd = "ping" if new_prefix == "no" else f"{new_prefix}ping"
+                
+                response = (
+                    "<blockquote>"
+                    "<b>✅ <i>Prefix berhasil diubah!</i></b>\n\n"
+                    f"<b>• New Prefix:</b> <code>{prefix_display}</code>\n"
+                    f"<b>• Example:</b> <code>{example_cmd}</code>\n\n"
+                    "<i>Perubahan akan berlaku untuk semua command.</i>"
+                    "</blockquote>"
                 )
+                
+                await event.reply(response, parse_mode='html')
             else:
-                await event.reply("❌ **Error:** Gagal menyimpan prefix ke database!")
+                await event.reply("<blockquote>❌ <b>Error:</b> Gagal menyimpan prefix ke database!</blockquote>", parse_mode='html')
 
     return prefix_handler
 
 async def get_prefix_from_mongo(user_id):
-    """Ambil prefix dari MongoDB"""
+    """Ambil prefix dari MongoDB - Versi Diperbaiki"""
     try:
         if sessions_collection:
-            user_data = sessions_collection.find_one({"user_id": str(user_id), "type": "prefix"})
-            if user_data and "prefix" in user_data:
-                return user_data["prefix"]
+            # Cari prefix di session data user
+            session_data = sessions_collection.find_one({"user_id": str(user_id)})
+            
+            if session_data:
+                # Cek jika prefix ada di session data
+                if "prefix" in session_data:
+                    return session_data["prefix"]
+                
+                # Jika tidak ada, buat default dan simpan
+                default_prefix = "."
+                await save_prefix_to_mongo(user_id, default_prefix)
+                return default_prefix
+            
+            # Jika tidak ada session data sama sekali, buat baru
+            default_prefix = "."
+            await save_prefix_to_mongo(user_id, default_prefix)
+            return default_prefix
         
-        # Fallback ke file jika MongoDB tidak tersedia
-        return get_prefix_from_file(user_id)
-    except:
-        return get_prefix_from_file(user_id)
+        return "."
+    except Exception as e:
+        print(f"❌ Error getting prefix from MongoDB: {e}")
+        return "."
 
 async def save_prefix_to_mongo(user_id, prefix):
-    """Simpan prefix ke MongoDB"""
+    """Simpan prefix ke MongoDB - Versi Diperbaiki"""
     try:
         if sessions_collection:
-            from datetime import datetime
-            sessions_collection.update_one(
-                {
-                    "user_id": str(user_id),
-                    "type": "prefix"
-                },
+            # Update session data yang sudah ada
+            result = sessions_collection.update_one(
+                {"user_id": str(user_id)},
                 {
                     "$set": {
                         "prefix": prefix,
                         "updated_at": datetime.now()
+                    },
+                    "$setOnInsert": {
+                        "created_at": datetime.now(),
+                        "is_active": True
                     }
                 },
                 upsert=True
             )
-            return True
+            
+            return result.acknowledged
         
-        # Fallback ke file jika MongoDB tidak tersedia
-        return save_prefix_to_file(user_id, prefix)
+        return False
     except Exception as e:
         print(f"❌ Error saving prefix to MongoDB: {e}")
-        return save_prefix_to_file(user_id, prefix)
-
-def get_prefix_from_file(user_id):
-    """Ambil prefix dari file (fallback)"""
-    try:
-        with open('data/prefix.json', 'r') as f:
-            data = json.load(f)
-            return data.get(str(user_id), '.')
-    except:
-        return '.'
-
-def save_prefix_to_file(user_id, prefix):
-    """Simpan prefix ke file (fallback)"""
-    try:
-        import os
-        os.makedirs('data', exist_ok=True)
-        
-        try:
-            with open('data/prefix.json', 'r') as f:
-                data = json.load(f)
-        except:
-            data = {}
-        
-        data[str(user_id)] = prefix
-        
-        with open('data/prefix.json', 'w') as f:
-            json.dump(data, f, indent=2)
-        
-        return True
-    except:
         return False
 
 # Fungsi untuk menambahkan handler ke userbot baru
@@ -192,5 +191,6 @@ async def add_prefix_handler_to_client(client, user_id):
 # Export functions
 __all__ = [
     'add_prefix_handler_to_client',
-    'get_prefix_from_mongo'
+    'get_prefix_from_mongo',
+    'save_prefix_to_mongo'
 ]

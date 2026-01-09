@@ -126,8 +126,8 @@ async def setup_userbot_ping(client, user_id):
             f"<blockquote>{icon1} ᴘᴏɴɢ: <code>{latency:.2f}ᴍs</code>\n"
             f"{icon2} ʙᴏᴛ ᴜᴘᴛɪᴍᴇ: <code>{bot_uptime}</code>\n"
             f"{icon3} sᴇssɪᴏɴ ᴜᴘᴛɪᴍᴇ: <code>{session_uptime}</code>\n"
-            f"<blockquote>{icon4} ᴏᴡɴᴇʀ: Vantzxx</blockquote>\n"
-            f"<blockquote>☾. USERBOT @Vantzxx</blockquote>\n\n"
+            f"<blockquote>{icon4} ᴏᴡɴᴇʀ: @Vantzxx</blockquote>\n"
+            f"<blockquote>☾. Userbot : Oxyluss</blockquote>\n\n"
         )
         
         await ping_msg.edit(response, parse_mode='html')
