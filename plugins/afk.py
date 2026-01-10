@@ -174,27 +174,32 @@ def setup(bot, user):
         if not afk_data['is_afk'] or event.sender_id == OWNER_ID:
             return
         
-        # Cek apakah pesan mention/reply ke owner
+        # Cek apakah ini chat pribadi (PM)
+        is_pm = event.is_private
+        
+        # Cek apakah pesan mention/reply ke owner (hanya untuk grup/channel)
         is_mention = False
         
-        # Cek jika ada reply ke pesan owner
-        if event.reply_to_msg_id:
-            try:
-                replied_msg = await event.get_reply_message()
-                if replied_msg.sender_id == OWNER_ID:
-                    is_mention = True
-            except:
-                pass
+        if not is_pm:
+            # Cek jika ada reply ke pesan owner (hanya di grup/channel)
+            if event.reply_to_msg_id:
+                try:
+                    replied_msg = await event.get_reply_message()
+                    if replied_msg.sender_id == OWNER_ID:
+                        is_mention = True
+                except:
+                    pass
+            
+            # Cek jika ada mention username owner (hanya di grup/channel)
+            if not is_mention and event.message.entities:
+                me = await user.get_me()
+                for entity in event.message.entities:
+                    if hasattr(entity, 'user_id') and entity.user_id == OWNER_ID:
+                        is_mention = True
+                        break
         
-        # Cek jika ada mention username owner
-        if not is_mention and event.message.entities:
-            me = await user.get_me()
-            for entity in event.message.entities:
-                if hasattr(entity, 'user_id') and entity.user_id == OWNER_ID:
-                    is_mention = True
-                    break
-        
-        if not is_mention:
+        # Jika bukan PM dan bukan mention/reply di grup, return
+        if not is_pm and not is_mention:
             return
         
         # Cek cooldown untuk mencegah spam
@@ -214,11 +219,26 @@ def setup(bot, user):
         # Format waktu AFK
         afk_duration = format_afk_time(afk_data['start_time'])
         
+        # Tentukan pesan berdasarkan jenis chat
+        if is_pm:
+            # Pesan untuk chat pribadi
+            response_message = (
+                f"<blockquote>✘ ᴏᴡɴᴇʀ ɪs ᴀғᴋ\n"
+                f"✞ sɪɴᴄᴇ: <b>{afk_duration}</b>\n"
+                f"⛧ ʀᴇᴀsᴏɴ: <b>{afk_data['reason']}</b>\n"
+                f"✞ ᴛᴏᴛᴀʟ ᴍᴇssᴀɢᴇs: <b>{afk_data['mentions']}</b></blockquote>"
+            )
+        else:
+            # Pesan untuk mention/reply di grup
+            response_message = (
+                f"<blockquote>✘ ᴏᴡɴᴇʀ ɪs ᴀғᴋ\n"
+                f"✞ sɪɴᴄᴇ: <b>{afk_duration}</b>\n"
+                f"⛧ ʀᴇᴀsᴏɴ: <b>{afk_data['reason']}</b>\n"
+                f"✞ ᴍᴇɴᴛɪᴏɴs: <b>{afk_data['mentions']}</b></blockquote>"
+            )
+        
         # Kirim notifikasi AFK
         await event.reply(
-            f"<blockquote>✘ ᴏᴡɴᴇʀ ɪs ᴀғᴋ\n"
-            f"✞ sɪɴᴄᴇ: <b>{afk_duration}</b>\n"
-            f"⛧ ʀᴇᴀsᴏɴ: <b>{afk_data['reason']}</b>\n"
-            f"✞ ᴍᴇɴᴛɪᴏɴs: <b>{afk_data['mentions']}</b></blockquote>",
+            response_message,
             parse_mode='html'
         )
