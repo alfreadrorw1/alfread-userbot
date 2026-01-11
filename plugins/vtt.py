@@ -8,7 +8,8 @@ from telethon import events
 import subprocess
 from config import OWNER_ID
 import traceback
-import time  # Ditambahkan di sini sesuai perbaikan di akhir file
+import time
+import random  # Untuk membuat unique message
 
 # Cek apakah whisper tersedia
 try:
@@ -155,6 +156,26 @@ def transcribe_audio(audio_path):
         print(f"ᴛʀᴀɴsᴄʀɪᴘᴛɪᴏɴ ᴇʀʀᴏʀ: {e}")
         raise
 
+async def safe_edit_message(message, new_text):
+    """Safely edit a message, avoiding 'content not modified' error"""
+    try:
+        # Cek apakah teks sudah berbeda
+        if hasattr(message, 'message') and message.message == new_text:
+            # Tambahkan karakter unik di akhir untuk menghindari error
+            unique_char = f" [{random.randint(1000, 9999)}]"
+            new_text = new_text.replace("</blockquote>", f"{unique_char}</blockquote>")
+        
+        await message.edit(new_text, parse_mode='html')
+        return True
+    except Exception as e:
+        if "not modified" in str(e).lower():
+            # Jika error karena content sama, abaikan saja
+            print(f"ɪɴғᴏ: ᴘᴇsᴀɴ sᴜᴅᴀʜ ᴜᴘᴅᴀᴛᴇ ({e})")
+            return True
+        else:
+            # Jika error lain, lempar exception
+            raise
+
 def setup(bot, user):
     
     @user.on(events.NewMessage())
@@ -188,6 +209,16 @@ def setup(bot, user):
             )
             return
         
+        # Variabel untuk tracking progress
+        processing_msg = None
+        processing_stages = [
+            "⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...",
+            "📥 ᴍᴇɴɢᴜɴᴅᴜʜ ᴀᴜᴅɪᴏ...",
+            "🔄 ᴍᴇɴɢᴏɴᴠᴇʀsɪ ᴀᴜᴅɪᴏ ғᴏʀᴍᴀᴛ...",
+            "📝 ᴍᴇɴᴛʀᴀɴsᴋʀɪᴘsɪ ᴅᴇɴɢᴀɴ ᴡʜɪsᴘᴇʀ..."
+        ]
+        current_stage = 0
+        
         try:
             # Get replied message
             replied_msg = await event.get_reply_message()
@@ -210,15 +241,13 @@ def setup(bot, user):
                 )
                 return
             
-            # Send processing message
+            # Send initial processing message
             processing_msg = await event.reply(
-                "<blockquote>⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...\n"
-                "📥 ᴍᴇɴɢᴜɴᴅᴜʜ ᴀᴜᴅɪᴏ...</blockquote>",
+                f"<blockquote>{processing_stages[current_stage]}</blockquote>",
                 parse_mode='html'
             )
             
             # Gunakan directory yang lebih aman untuk Termux/VPS
-            # Coba beberapa lokasi yang umum
             temp_dirs = [
                 '/tmp',
                 '/data/data/com.termux/files/usr/tmp',
@@ -248,46 +277,46 @@ def setup(bot, user):
             
             # Buat unique subdirectory dalam temp_dir
             timestamp = int(time.time())
-            unique_dir = os.path.join(temp_dir, f"vtt_{timestamp}_{os.getpid()}")
+            unique_dir = os.path.join(temp_dir, f"vtt_{timestamp}_{os.getpid()}_{random.randint(1000, 9999)}")
             os.makedirs(unique_dir, exist_ok=True)
             
             original_path = os.path.join(unique_dir, "original.ogg")
             converted_path = os.path.join(unique_dir, "converted.wav")
             
             try:
-                # Download audio file
-                await processing_msg.edit(
-                    "<blockquote>⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...\n"
-                    "📥 ᴍᴇɴɢᴜɴᴅᴜʜ ᴀᴜᴅɪᴏ...</blockquote>",
-                    parse_mode='html'
+                # Stage 1: Download audio file
+                current_stage = 1
+                await safe_edit_message(
+                    processing_msg,
+                    f"<blockquote>{processing_stages[current_stage]}</blockquote>"
                 )
                 
-                # Download the file dengan progress
+                # Download the file
                 download_path = await replied_msg.download_media(file=original_path)
                 
                 if not download_path or not os.path.exists(download_path):
-                    await processing_msg.edit(
+                    await safe_edit_message(
+                        processing_msg,
                         "<blockquote>⚠ ᴇʀʀᴏʀ: ɢᴀɢᴀʟ ᴍᴇɴɢᴜɴᴅᴜʜ ᴀᴜᴅɪᴏ\n"
-                        "📌 ᴘᴇʀɪᴋsᴀ ᴋᴇᴍʙᴀʟɪ ᴋᴏɴᴇᴋsɪ ɪɴᴛᴇʀɴᴇᴛ</blockquote>",
-                        parse_mode='html'
+                        "📌 ᴘᴇʀɪᴋsᴀ ᴋᴇᴍʙᴀʟɪ ᴋᴏɴᴇᴋsɪ ɪɴᴛᴇʀɴᴇᴛ</blockquote>"
                     )
                     return
                 
                 # Check file size (minimum 2KB)
                 file_size = os.path.getsize(download_path)
                 if file_size < 2048:
-                    await processing_msg.edit(
+                    await safe_edit_message(
+                        processing_msg,
                         f"<blockquote>⚠ ᴇʀʀᴏʀ: ᴀᴜᴅɪᴏ ᴛᴇʀʟᴀʟᴜ ᴘᴇɴᴅᴇᴋ ({file_size} ʙʏᴛᴇs)\n"
-                        "📌 ᴍɪɴɪᴍᴀʟ sɪᴢᴇ: 2ᴋʙ</blockquote>",
-                        parse_mode='html'
+                        "📌 ᴍɪɴɪᴍᴀʟ sɪᴢᴇ: 2ᴋʙ</blockquote>"
                     )
                     return
                 
-                # Convert audio
-                await processing_msg.edit(
-                    "<blockquote>⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...\n"
-                    "🔄 ᴍᴇɴɢᴏɴᴠᴇʀsɪ ᴀᴜᴅɪᴏ ғᴏʀᴍᴀᴛ...</blockquote>",
-                    parse_mode='html'
+                # Stage 2: Convert audio
+                current_stage = 2
+                await safe_edit_message(
+                    processing_msg,
+                    f"<blockquote>{processing_stages[current_stage]}</blockquote>"
                 )
                 
                 if not convert_audio(download_path, converted_path):
@@ -309,28 +338,28 @@ def setup(bot, user):
                     )
                     
                     if result_mp3.returncode != 0:
-                        await processing_msg.edit(
+                        await safe_edit_message(
+                            processing_msg,
                             "<blockquote>⚠ ᴇʀʀᴏʀ: ɢᴀɢᴀʟ ᴍᴇɴɢᴏɴᴠᴇʀsɪ ᴀᴜᴅɪᴏ\n"
-                            "📌 ᴘᴀsᴛɪᴋᴀɴ ғғᴍᴘᴇɢ ᴛᴇʀɪɴsᴛᴀʟʟ ᴅᴀɴ ᴛᴇʀsᴇᴅɪᴀ</blockquote>",
-                            parse_mode='html'
+                            "📌 ᴘᴀsᴛɪᴋᴀɴ ғғᴍᴘᴇɢ ᴛᴇʀɪɴsᴛᴀʟʟ ᴅᴀɴ ᴛᴇʀsᴇᴅɪᴀ</blockquote>"
                         )
                         return
                 
-                # Transcribe audio
-                await processing_msg.edit(
-                    "<blockquote>⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...\n"
-                    "📝 ᴍᴇɴᴛʀᴀɴsᴋʀɪᴘsɪ ᴅᴇɴɢᴀɴ ᴡʜɪsᴘᴇʀ...</blockquote>",
-                    parse_mode='html'
+                # Stage 3: Transcribe audio
+                current_stage = 3
+                await safe_edit_message(
+                    processing_msg,
+                    f"<blockquote>{processing_stages[current_stage]}</blockquote>"
                 )
                 
                 transcription = transcribe_audio(converted_path)
                 
                 # Check if transcription is empty
                 if not transcription['text'] or len(transcription['text'].strip()) < 2:
-                    await processing_msg.edit(
+                    await safe_edit_message(
+                        processing_msg,
                         "<blockquote>⚠ ᴇʀʀᴏʀ: ᴛɪᴅᴀᴋ ᴅᴀᴘᴀᴛ ᴍᴇɴɢᴇɴᴀʟɪ ᴛᴇᴋsᴛ ᴅᴀʀɪ ᴀᴜᴅɪᴏ\n"
-                        "📌 ᴘᴀsᴛɪᴋᴀɴ ᴀᴜᴅɪᴏ ᴊᴇʟᴀs, ᴛɪᴅᴀᴋ ʙɪsᴜ, ᴅᴀɴ ᴛᴇʀᴅᴀᴘᴀᴛ ᴜᴄᴀᴘᴀɴ</blockquote>",
-                        parse_mode='html'
+                        "📌 ᴘᴀsᴛɪᴋᴀɴ ᴀᴜᴅɪᴏ ᴊᴇʟᴀs, ᴛɪᴅᴀᴋ ʙɪsᴜ, ᴅᴀɴ ᴛᴇʀᴅᴀᴘᴀᴛ ᴜᴄᴀᴘᴀɴ</blockquote>"
                     )
                     return
                 
@@ -358,25 +387,26 @@ def setup(bot, user):
                 
                 output = (
                     f"<blockquote>🎤 ᴠᴏɪᴄᴇ ᴛᴏ ᴛᴇxᴛ\n"
-                    f"⏱ ᴅᴜʀᴀsɪ: {user_link}\n"
+                    f"👤 ᴘᴇɴɢɢᴜɴᴀ: {user_link}\n"
                     f"📌 ʙᴀʜᴀsᴀ: {language_name}\n\n"
                     f"📝 ᴛʀᴀɴsᴋʀɪᴘsɪ:\n"
                     f"{transcript_text}</blockquote>"
                 )
                 
-                await processing_msg.edit(output, parse_mode='html')
+                await safe_edit_message(processing_msg, output)
                 
             except Exception as e:
                 error_msg = str(e)[:200]
-                await processing_msg.edit(
+                await safe_edit_message(
+                    processing_msg,
                     f"<blockquote>⚠ ᴇʀʀᴏʀ: {error_msg}\n"
-                    f"📌 ᴄᴏʙᴀ ᴜʟᴀɴɢɪ ᴏʀ ᴜsᴇ sʜᴏʀᴛᴇʀ ᴀᴜᴅɪᴏ</blockquote>",
-                    parse_mode='html'
+                    f"📌 ᴄᴏʙᴀ ᴜʟᴀɴɢɪ ᴏʀ ᴜsᴇ sʜᴏʀᴛᴇʀ ᴀᴜᴅɪᴏ</blockquote>"
                 )
                 print(f"ᴠᴛᴛ ᴇʀʀᴏʀ: {traceback.format_exc()}")
             
             finally:
-                # Cleanup temp files
+                # Cleanup temp files dengan delay kecil
+                await asyncio.sleep(1)
                 try:
                     import shutil
                     if os.path.exists(unique_dir):
@@ -386,9 +416,16 @@ def setup(bot, user):
                 
         except Exception as e:
             error_msg = str(e)[:200]
-            await event.reply(
-                f"<blockquote>⚠ ᴛᴇʀᴊᴀᴅɪ ᴋᴇsᴀʟᴀʜᴀɴ: {error_msg}\n"
-                f"📌 ᴘᴇʀɪᴋsᴀ ᴋᴇᴍʙᴀʟɪ ᴘᴇʀɪɴᴛᴀʜ</blockquote>",
-                parse_mode='html'
-            )
+            if processing_msg:
+                await safe_edit_message(
+                    processing_msg,
+                    f"<blockquote>⚠ ᴛᴇʀᴊᴀᴅɪ ᴋᴇsᴀʟᴀʜᴀɴ: {error_msg}\n"
+                    f"📌 ᴘᴇʀɪᴋsᴀ ᴋᴇᴍʙᴀʟɪ ᴘᴇʀɪɴᴛᴀʜ</blockquote>"
+                )
+            else:
+                await event.reply(
+                    f"<blockquote>⚠ ᴛᴇʀᴊᴀᴅɪ ᴋᴇsᴀʟᴀʜᴀɴ: {error_msg}\n"
+                    f"📌 ᴘᴇʀɪᴋsᴀ ᴋᴇᴍʙᴀʟɪ ᴘᴇʀɪɴᴛᴀʜ</blockquote>",
+                    parse_mode='html'
+                )
             print(f"ᴠᴛᴛ ᴍᴀɪɴ ᴇʀʀᴏʀ: {traceback.format_exc()}")
