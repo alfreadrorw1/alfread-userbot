@@ -8,7 +8,6 @@ from telethon import events
 import subprocess
 from config import OWNER_ID
 import traceback
-import time  # Ditambahkan di sini sesuai perbaikan di akhir file
 
 # Cek apakah whisper tersedia
 try:
@@ -16,7 +15,7 @@ try:
     WHISPER_AVAILABLE = True
 except ImportError:
     WHISPER_AVAILABLE = False
-    print("⚠ ᴡʜɪsᴘᴇʀ ᴛɪᴅᴀᴋ ᴛᴇʀɪɴsᴛᴀʟʟ. ɪɴsᴛᴀʟʟ ᴅᴇɴɢᴀɴ: ᴘɪᴘ ɪɴsᴛᴀʟʟ ᴏᴘᴇɴᴀɪ-ᴡʜɪsᴘᴇʀ")
+    print("⚠️ Whisper tidak terinstall. Install dengan: pip install openai-whisper")
 
 def get_prefix():
     """Get current prefix from config"""
@@ -32,67 +31,67 @@ def get_prefix():
 def get_language_name(code):
     """Convert language code to readable name"""
     language_names = {
-        'en': 'ᴇɴɢʟɪsʜ',
-        'id': 'ɪɴᴅᴏɴᴇsɪᴀɴ',
-        'ar': 'ᴀʀᴀʙɪᴄ',
-        'es': 'sᴘᴀɴɪsʜ',
-        'fr': 'ғʀᴇɴᴄʜ',
-        'de': 'ɢᴇʀᴍᴀɴ',
-        'pt': 'ᴘᴏʀᴛᴜɢᴜᴇsᴇ',
-        'ru': 'ʀᴜssɪᴀɴ',
-        'zh': 'ᴄʜɪɴᴇsᴇ',
-        'ja': 'ᴊᴀᴘᴀɴᴇsᴇ',
-        'ko': 'ᴋᴏʀᴇᴀɴ',
-        'hi': 'ʜɪɴᴅɪ',
-        'it': 'ɪᴛᴀʟɪᴀɴ',
-        'tr': 'ᴛᴜʀᴋɪsʜ',
-        'nl': 'ᴅᴜᴛᴄʜ',
-        'pl': 'ᴘᴏʟɪsʜ',
-        'vi': 'ᴠɪᴇᴛɴᴀᴍᴇsᴇ',
-        'th': 'ᴛʜᴀɪ',
-        'fa': 'ᴘᴇʀsɪᴀɴ',
-        'ur': 'ᴜʀᴅᴜ',
-        'he': 'ʜᴇʙʀᴇᴡ',
-        'bn': 'ʙᴇɴɢᴀʟɪ',
-        'ms': 'ᴍᴀʟᴀʏ',
-        'fil': 'ғɪʟɪᴘɪɴᴏ',
-        'sw': 'sᴡᴀʜɪʟɪ',
-        'am': 'ᴀᴍʜᴀʀɪᴄ',
-        'ta': 'ᴛᴀᴍɪʟ',
-        'te': 'ᴛᴇʟᴜɢᴜ',
-        'mr': 'ᴍᴀʀᴀᴛʜɪ',
-        'gu': 'ɢᴜᴊᴀʀᴀᴛɪ',
-        'kn': 'ᴋᴀɴɴᴀᴅᴀ',
-        'ml': 'ᴍᴀʟᴀʏᴀʟᴀᴍ',
-        'or': 'ᴏᴅɪᴀ',
-        'pa': 'ᴘᴜɴᴊᴀʙɪ',
-        'as': 'ᴀssᴀᴍᴇsᴇ',
-        'mai': 'ᴍᴀɪᴛʜɪʟɪ',
-        'sa': 'sᴀɴsᴋʀɪᴛ',
-        'ne': 'ɴᴇᴘᴀʟɪ',
-        'si': 'sɪɴʜᴀʟᴀ',
-        'my': 'ʙᴜʀᴍᴇsᴇ',
-        'km': 'ᴋʜᴍᴇʀ',
-        'lo': 'ʟᴀᴏ',
-        'bo': 'ᴛɪʙᴇᴛᴀɴ',
-        'ug': 'ᴜʏɢʜᴜʀ',
-        'mn': 'ᴍᴏɴɢᴏʟɪᴀɴ',
-        'dz': 'ᴅᴢᴏɴɢᴋʜᴀ',
-        'ps': 'ᴘᴀsʜᴛᴏ',
-        'ku': 'ᴋᴜʀᴅɪsʜ',
-        'ckb': 'sᴏʀᴀɴɪ',
-        'sd': 'sɪɴᴅʜɪ',
-        'bal': 'ʙᴀʟᴏᴄʜɪ',
-        'brx': 'ʙᴏᴅᴏ',
-        'sat': 'sᴀɴᴛᴀʟɪ',
-        'ks': 'ᴋᴀsʜᴍɪʀɪ',
-        'kok': 'ᴋᴏɴᴋᴀɴɪ',
-        'mni': 'ᴍᴀɴɪᴘᴜʀɪ',
-        'doi': 'ᴅᴏɢʀɪ',
-        'lus': 'ᴍɪᴢᴏ',
-        'npi': 'ɴᴇᴘᴀʟɪ',
+        'en': 'English',
+        'id': 'Indonesian',
+        'ar': 'Arabic',
+        'es': 'Spanish',
+        'fr': 'French',
+        'de': 'German',
+        'pt': 'Portuguese',
+        'ru': 'Russian',
+        'zh': 'Chinese',
+        'ja': 'Japanese',
+        'ko': 'Korean',
+        'hi': 'Hindi',
+        'it': 'Italian',
+        'tr': 'Turkish',
+        'nl': 'Dutch',
+        'pl': 'Polish',
+        'vi': 'Vietnamese',
+        'th': 'Thai',
+        'fa': 'Persian',
+        'ur': 'Urdu',
+        'he': 'Hebrew',
+        'bn': 'Bengali',
+        'ms': 'Malay',
+        'fil': 'Filipino',
+        'sw': 'Swahili',
+        'am': 'Amharic',
+        'ta': 'Tamil',
+        'te': 'Telugu',
+        'mr': 'Marathi',
+        'gu': 'Gujarati',
+        'kn': 'Kannada',
+        'ml': 'Malayalam',
+        'or': 'Odia',
+        'pa': 'Punjabi',
+        'as': 'Assamese',
+        'mai': 'Maithili',
+        'sa': 'Sanskrit',
+        'ne': 'Nepali',
+        'si': 'Sinhala',
+        'my': 'Burmese',
+        'km': 'Khmer',
+        'lo': 'Lao',
+        'bo': 'Tibetan',
+        'ug': 'Uyghur',
+        'mn': 'Mongolian',
+        'dz': 'Dzongkha',
+        'ps': 'Pashto',
+        'ku': 'Kurdish',
+        'ckb': 'Sorani',
+        'sd': 'Sindhi',
+        'bal': 'Balochi',
+        'brx': 'Bodo',
+        'sat': 'Santali',
+        'ks': 'Kashmiri',
+        'kok': 'Konkani',
+        'mni': 'Manipuri',
+        'doi': 'Dogri',
+        'lus': 'Mizo',
+        'npi': 'Nepali',
     }
-    return language_names.get(code, f"ᴜɴᴋɴᴏᴡɴ ({code})")
+    return language_names.get(code, f"Unknown ({code})")
 
 def convert_audio(input_path, output_path):
     """Convert audio to WAV format using ffmpeg"""
@@ -114,7 +113,7 @@ def convert_audio(input_path, output_path):
         )
         
         if result.returncode != 0:
-            print(f"ғғᴍᴘᴇɢ ᴇʀʀᴏʀ: {result.stderr}")
+            print(f"FFmpeg error: {result.stderr}")
             return False
         
         # Verify output file exists and has content
@@ -123,13 +122,13 @@ def convert_audio(input_path, output_path):
         return False
         
     except Exception as e:
-        print(f"ᴀᴜᴅɪᴏ ᴄᴏɴᴠᴇʀsɪᴏɴ ᴇʀʀᴏʀ: {e}")
+        print(f"Audio conversion error: {e}")
         return False
 
 def transcribe_audio(audio_path):
     """Transcribe audio using Whisper"""
     if not WHISPER_AVAILABLE:
-        raise ImportError("ᴡʜɪsᴘᴇʀ ʟɪʙʀᴀʀʏ ᴛɪᴅᴀᴋ ᴛᴇʀsᴇᴅɪᴀ")
+        raise ImportError("Whisper library tidak tersedia")
     
     try:
         # Load model (gunakan 'base' untuk kecepatan, 'small' untuk akurasi lebih baik)
@@ -152,7 +151,7 @@ def transcribe_audio(audio_path):
         }
         
     except Exception as e:
-        print(f"ᴛʀᴀɴsᴄʀɪᴘᴛɪᴏɴ ᴇʀʀᴏʀ: {e}")
+        print(f"Transcription error: {e}")
         raise
 
 def setup(bot, user):
@@ -182,8 +181,8 @@ def setup(bot, user):
         # Check if replying to a message
         if not event.is_reply:
             await event.reply(
-                "<blockquote>⚠ ᴇʀʀᴏʀ: ʜᴀʀᴀᴘ ʀᴇᴘʟʏ ᴘᴇsᴀɴ ʏᴀɴɢ ᴍᴇɴɢᴀɴᴅᴜɴɢ ᴠᴏɪᴄᴇ/ᴀᴜᴅɪᴏ\n"
-                "📌 ᴜsᴀɢᴇ: ʀᴇᴘʟʏ ᴠᴏɪᴄᴇ → .ᴠᴛᴛ</blockquote>",
+                "<blockquote>✘ ᴇʀʀᴏʀ: ʏᴏᴜ ᴍᴜsᴛ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴠᴏɪᴄᴇ/ᴀᴜᴅɪᴏ ᴍᴇssᴀɢᴇ\n"
+                "✓ ᴜsᴀɢᴇ: ʀᴇᴘʟʏ ᴛᴏ ᴠᴏɪᴄᴇ → .ᴠᴛᴛ</blockquote>",
                 parse_mode='html'
             )
             return
@@ -195,8 +194,8 @@ def setup(bot, user):
             # Check if replied message has voice/audio
             if not (replied_msg.voice or replied_msg.audio):
                 await event.reply(
-                    "<blockquote>⚠ ᴇʀʀᴏʀ: ᴘᴇsᴀɴ ʏᴀɴɢ ᴅɪʀᴇᴘʟʏ ʙᴜᴋᴀɴ ᴠᴏɪᴄᴇ/ᴀᴜᴅɪᴏ\n"
-                    "📌 ᴘᴀsᴛɪᴋᴀɴ ᴍᴇɴɢʀᴇᴘʟʏ ᴘᴇsᴀɴ ᴠᴏɪᴄᴇ ʏᴀɴɢ ʙᴇɴᴀʀ</blockquote>",
+                    "<blockquote>✘ ᴇʀʀᴏʀ: ʀᴇᴘʟɪᴇᴅ ᴍᴇssᴀɢᴇ ɪs ɴᴏᴛ ᴀ ᴠᴏɪᴄᴇ/ᴀᴜᴅɪᴏ\n"
+                    "✓ ᴏɴʟʏ ᴠᴏɪᴄᴇ ᴍᴇssᴀɢᴇs ᴄᴀɴ ʙᴇ ᴛʀᴀɴsᴄʀɪʙᴇᴅ</blockquote>",
                     parse_mode='html'
                 )
                 return
@@ -204,16 +203,16 @@ def setup(bot, user):
             # Check if Whisper is available
             if not WHISPER_AVAILABLE:
                 await event.reply(
-                    "<blockquote>⚠ ᴇʀʀᴏʀ: ᴡʜɪsᴘᴇʀ ᴛɪᴅᴀᴋ ᴛᴇʀɪɴsᴛᴀʟʟ\n"
-                    "📌 ɪɴsᴛᴀʟʟ ᴡʜɪsᴘᴇʀ ᴅᴇɴɢᴀɴ: ᴘɪᴘ ɪɴsᴛᴀʟʟ ᴏᴘᴇɴᴀɪ-ᴡʜɪsᴘᴇʀ</blockquote>",
+                    "<blockquote>✘ ᴇʀʀᴏʀ: ᴡʜɪsᴘᴇʀ ʟɪʙʀᴀʀʏ ɴᴏᴛ ɪɴsᴛᴀʟʟᴇᴅ\n"
+                    "✓ ɪɴsᴛᴀʟʟ ᴡɪᴛʜ: ᴘɪᴘ ɪɴsᴛᴀʟʟ ᴏᴘᴇɴᴀɪ-ᴡʜɪsᴘᴇʀ</blockquote>",
                     parse_mode='html'
                 )
                 return
             
             # Send processing message
             processing_msg = await event.reply(
-                "<blockquote>⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...\n"
-                "📥 ᴍᴇɴɢᴜɴᴅᴜʜ ᴀᴜᴅɪᴏ...</blockquote>",
+                "<blockquote>⛧ ᴘʀᴏᴄᴇssɪɴɢ ᴠᴏɪᴄᴇ ᴍᴇssᴀɢᴇ...\n"
+                "✓ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴀᴜᴅɪᴏ...</blockquote>",
                 parse_mode='html'
             )
             
@@ -257,8 +256,8 @@ def setup(bot, user):
             try:
                 # Download audio file
                 await processing_msg.edit(
-                    "<blockquote>⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...\n"
-                    "📥 ᴍᴇɴɢᴜɴᴅᴜʜ ᴀᴜᴅɪᴏ...</blockquote>",
+                    "<blockquote>⛧ ᴘʀᴏᴄᴇssɪɴɢ ᴠᴏɪᴄᴇ ᴍᴇssᴀɢᴇ...\n"
+                    "✓ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴀᴜᴅɪᴏ...</blockquote>",
                     parse_mode='html'
                 )
                 
@@ -267,8 +266,8 @@ def setup(bot, user):
                 
                 if not download_path or not os.path.exists(download_path):
                     await processing_msg.edit(
-                        "<blockquote>⚠ ᴇʀʀᴏʀ: ɢᴀɢᴀʟ ᴍᴇɴɢᴜɴᴅᴜʜ ᴀᴜᴅɪᴏ\n"
-                        "📌 ᴘᴇʀɪᴋsᴀ ᴋᴇᴍʙᴀʟɪ ᴋᴏɴᴇᴋsɪ ɪɴᴛᴇʀɴᴇᴛ</blockquote>",
+                        "<blockquote>✘ ᴇʀʀᴏʀ: ғᴀɪʟᴇᴅ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ ᴀᴜᴅɪᴏ\n"
+                        "✓ ᴄʜᴇᴄᴋ ɪɴᴛᴇʀɴᴇᴛ ᴄᴏɴɴᴇᴄᴛɪᴏɴ</blockquote>",
                         parse_mode='html'
                     )
                     return
@@ -277,16 +276,16 @@ def setup(bot, user):
                 file_size = os.path.getsize(download_path)
                 if file_size < 2048:
                     await processing_msg.edit(
-                        f"<blockquote>⚠ ᴇʀʀᴏʀ: ᴀᴜᴅɪᴏ ᴛᴇʀʟᴀʟᴜ ᴘᴇɴᴅᴇᴋ ({file_size} ʙʏᴛᴇs)\n"
-                        "📌 ᴍɪɴɪᴍᴀʟ sɪᴢᴇ: 2ᴋʙ</blockquote>",
+                        f"<blockquote>✘ ᴇʀʀᴏʀ: ᴀᴜᴅɪᴏ ғɪʟᴇ ɪs ᴛᴏᴏ sᴍᴀʟʟ ({file_size} ʙʏᴛᴇs)\n"
+                        "✓ ᴍɪɴɪᴍᴜᴍ sɪᴢᴇ: 2ᴋʙ</blockquote>",
                         parse_mode='html'
                     )
                     return
                 
                 # Convert audio
                 await processing_msg.edit(
-                    "<blockquote>⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...\n"
-                    "🔄 ᴍᴇɴɢᴏɴᴠᴇʀsɪ ᴀᴜᴅɪᴏ ғᴏʀᴍᴀᴛ...</blockquote>",
+                    "<blockquote>⛧ ᴘʀᴏᴄᴇssɪɴɢ ᴠᴏɪᴄᴇ ᴍᴇssᴀɢᴇ...\n"
+                    "✓ ᴄᴏɴᴠᴇʀᴛɪɴɢ ᴀᴜᴅɪᴏ ғᴏʀᴍᴀᴛ...</blockquote>",
                     parse_mode='html'
                 )
                 
@@ -310,16 +309,16 @@ def setup(bot, user):
                     
                     if result_mp3.returncode != 0:
                         await processing_msg.edit(
-                            "<blockquote>⚠ ᴇʀʀᴏʀ: ɢᴀɢᴀʟ ᴍᴇɴɢᴏɴᴠᴇʀsɪ ᴀᴜᴅɪᴏ\n"
-                            "📌 ᴘᴀsᴛɪᴋᴀɴ ғғᴍᴘᴇɢ ᴛᴇʀɪɴsᴛᴀʟʟ ᴅᴀɴ ᴛᴇʀsᴇᴅɪᴀ</blockquote>",
+                            "<blockquote>✘ ᴇʀʀᴏʀ: ғᴀɪʟᴇᴅ ᴛᴏ ᴄᴏɴᴠᴇʀᴛ ᴀᴜᴅɪᴏ\n"
+                            "✓ ᴍᴀᴋᴇ sᴜʀᴇ ғғᴍᴘᴇɢ ɪs ɪɴsᴛᴀʟʟᴇᴅ</blockquote>",
                             parse_mode='html'
                         )
                         return
                 
                 # Transcribe audio
                 await processing_msg.edit(
-                    "<blockquote>⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...\n"
-                    "📝 ᴍᴇɴᴛʀᴀɴsᴋʀɪᴘsɪ ᴅᴇɴɢᴀɴ ᴡʜɪsᴘᴇʀ...</blockquote>",
+                    "<blockquote>⛧ ᴘʀᴏᴄᴇssɪɴɢ ᴠᴏɪᴄᴇ ᴍᴇssᴀɢᴇ...\n"
+                    "✓ ᴛʀᴀɴsᴄʀɪʙɪɴɢ ᴡɪᴛʜ ᴡʜɪsᴘᴇʀ...</blockquote>",
                     parse_mode='html'
                 )
                 
@@ -328,15 +327,15 @@ def setup(bot, user):
                 # Check if transcription is empty
                 if not transcription['text'] or len(transcription['text'].strip()) < 2:
                     await processing_msg.edit(
-                        "<blockquote>⚠ ᴇʀʀᴏʀ: ᴛɪᴅᴀᴋ ᴅᴀᴘᴀᴛ ᴍᴇɴɢᴇɴᴀʟɪ ᴛᴇᴋsᴛ ᴅᴀʀɪ ᴀᴜᴅɪᴏ\n"
-                        "📌 ᴘᴀsᴛɪᴋᴀɴ ᴀᴜᴅɪᴏ ᴊᴇʟᴀs, ᴛɪᴅᴀᴋ ʙɪsᴜ, ᴅᴀɴ ᴛᴇʀᴅᴀᴘᴀᴛ ᴜᴄᴀᴘᴀɴ</blockquote>",
+                        "<blockquote>✘ ᴇʀʀᴏʀ: ɴᴏ ᴛᴇxᴛ ᴅᴇᴛᴇᴄᴛᴇᴅ ɪɴ ᴀᴜᴅɪᴏ\n"
+                        "✓ ᴛʜᴇ ᴀᴜᴅɪᴏ ᴍᴀʏ ʙᴇ ᴛᴏᴏ sʜᴏʀᴛ, sɪʟᴇɴᴛ, ᴏʀ ɴᴏɪsʏ</blockquote>",
                         parse_mode='html'
                     )
                     return
                 
                 # Get user info
                 sender = replied_msg.sender
-                user_name = getattr(sender, 'first_name', '') or 'ᴜsᴇʀ'
+                user_name = getattr(sender, 'first_name', '') or 'User'
                 if hasattr(sender, 'last_name') and sender.last_name:
                     user_name += f" {sender.last_name}"
                 
@@ -354,13 +353,13 @@ def setup(bot, user):
                 
                 # Split long transcripts
                 if len(transcript_text) > 3000:
-                    transcript_text = transcript_text[:3000] + "...\n[ᴛʀᴜɴᴄᴀᴛᴇᴅ - ᴛᴇᴋsᴛ ᴛᴇʀʟᴀʟᴜ ᴘᴀɴᴊᴀɴɢ]"
+                    transcript_text = transcript_text[:3000] + "...\n[ᴛʀᴜɴᴄᴀᴛᴇᴅ - ᴛᴇxᴛ ᴛᴏᴏ ʟᴏɴɢ]"
                 
                 output = (
-                    f"<blockquote>🎤 ᴠᴏɪᴄᴇ ᴛᴏ ᴛᴇxᴛ\n"
-                    f"⏱ ᴅᴜʀᴀsɪ: {user_link}\n"
-                    f"📌 ʙᴀʜᴀsᴀ: {language_name}\n\n"
-                    f"📝 ᴛʀᴀɴsᴋʀɪᴘsɪ:\n"
+                    f"<blockquote>✞ ᴠᴏɪᴄᴇ ᴛᴏ ᴛᴇxᴛ\n"
+                    f"⛧ ғʀᴏᴍ: {user_link}\n"
+                    f"✓ ʟᴀɴɢ: {language_name}\n\n"
+                    f"✘ ᴛʀᴀɴsᴄʀɪᴘᴛɪᴏɴ:\n"
                     f"{transcript_text}</blockquote>"
                 )
                 
@@ -369,11 +368,11 @@ def setup(bot, user):
             except Exception as e:
                 error_msg = str(e)[:200]
                 await processing_msg.edit(
-                    f"<blockquote>⚠ ᴇʀʀᴏʀ: {error_msg}\n"
-                    f"📌 ᴄᴏʙᴀ ᴜʟᴀɴɢɪ ᴏʀ ᴜsᴇ sʜᴏʀᴛᴇʀ ᴀᴜᴅɪᴏ</blockquote>",
+                    f"<blockquote>✘ ᴇʀʀᴏʀ: {error_msg}\n"
+                    f"✓ ᴛʀʏ ᴀɢᴀɪɴ ᴏʀ ᴜsᴇ sʜᴏʀᴛᴇʀ ᴀᴜᴅɪᴏ</blockquote>",
                     parse_mode='html'
                 )
-                print(f"ᴠᴛᴛ ᴇʀʀᴏʀ: {traceback.format_exc()}")
+                print(f"VTT Error: {traceback.format_exc()}")
             
             finally:
                 # Cleanup temp files
@@ -387,8 +386,11 @@ def setup(bot, user):
         except Exception as e:
             error_msg = str(e)[:200]
             await event.reply(
-                f"<blockquote>⚠ ᴛᴇʀᴊᴀᴅɪ ᴋᴇsᴀʟᴀʜᴀɴ: {error_msg}\n"
-                f"📌 ᴘᴇʀɪᴋsᴀ ᴋᴇᴍʙᴀʟɪ ᴘᴇʀɪɴᴛᴀʜ</blockquote>",
+                f"<blockquote>✘ ᴜɴᴇxᴘᴇᴄᴛᴇᴅ ᴇʀʀᴏʀ: {error_msg}\n"
+                f"✓ ᴄᴏɴᴛᴀᴄᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ</blockquote>",
                 parse_mode='html'
             )
-            print(f"ᴠᴛᴛ ᴍᴀɪɴ ᴇʀʀᴏʀ: {traceback.format_exc()}")
+            print(f"VTT Main Error: {traceback.format_exc()}")
+
+# Perbaikan: Tambahkan import time yang hilang
+import time
