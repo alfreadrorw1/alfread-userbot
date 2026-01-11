@@ -9,7 +9,7 @@ import subprocess
 from config import OWNER_ID
 import traceback
 import time
-import random
+import random  # Untuk membuat unique message
 
 # Cek apakah whisper tersedia
 try:
@@ -33,55 +33,67 @@ def get_prefix():
 def get_language_name(code):
     """Convert language code to readable name"""
     language_names = {
-        'en': '🇺🇸 ᴇɴɢʟɪsʜ',
-        'id': '🇮🇩 ɪɴᴅᴏɴᴇsɪᴀɴ',
-        'ar': '🇸🇦 ᴀʀᴀʙɪᴄ',
-        'es': '🇪🇸 sᴘᴀɴɪsʜ',
-        'fr': '🇫🇷 ғʀᴇɴᴄʜ',
-        'de': '🇩🇪 ɢᴇʀᴍᴀɴ',
-        'pt': '🇵🇹 ᴘᴏʀᴛᴜɢᴜᴇsᴇ',
-        'ru': '🇷🇺 ʀᴜssɪᴀɴ',
-        'zh': '🇨🇳 ᴄʜɪɴᴇsᴇ',
-        'ja': '🇯🇵 ᴊᴀᴘᴀɴᴇsᴇ',
-        'ko': '🇰🇷 ᴋᴏʀᴇᴀɴ',
-        'hi': '🇮🇳 ʜɪɴᴅɪ',
-        'it': '🇮🇹 ɪᴛᴀʟɪᴀɴ',
-        'tr': '🇹🇷 ᴛᴜʀᴋɪsʜ',
-        'nl': '🇳🇱 ᴅᴜᴛᴄʜ',
-        'pl': '🇵🇱 ᴘᴏʟɪsʜ',
-        'vi': '🇻🇳 ᴠɪᴇᴛɴᴀᴍᴇsᴇ',
-        'th': '🇹🇭 ᴛʜᴀɪ',
+        'en': 'ᴇɴɢʟɪsʜ',
+        'id': 'ɪɴᴅᴏɴᴇsɪᴀɴ',
+        'ar': 'ᴀʀᴀʙɪᴄ',
+        'es': 'sᴘᴀɴɪsʜ',
+        'fr': 'ғʀᴇɴᴄʜ',
+        'de': 'ɢᴇʀᴍᴀɴ',
+        'pt': 'ᴘᴏʀᴛᴜɢᴜᴇsᴇ',
+        'ru': 'ʀᴜssɪᴀɴ',
+        'zh': 'ᴄʜɪɴᴇsᴇ',
+        'ja': 'ᴊᴀᴘᴀɴᴇsᴇ',
+        'ko': 'ᴋᴏʀᴇᴀɴ',
+        'hi': 'ʜɪɴᴅɪ',
+        'it': 'ɪᴛᴀʟɪᴀɴ',
+        'tr': 'ᴛᴜʀᴋɪsʜ',
+        'nl': 'ᴅᴜᴛᴄʜ',
+        'pl': 'ᴘᴏʟɪsʜ',
+        'vi': 'ᴠɪᴇᴛɴᴀᴍᴇsᴇ',
+        'th': 'ᴛʜᴀɪ',
+        'fa': 'ᴘᴇʀsɪᴀɴ',
+        'ur': 'ᴜʀᴅᴜ',
+        'he': 'ʜᴇʙʀᴇᴡ',
+        'bn': 'ʙᴇɴɢᴀʟɪ',
+        'ms': 'ᴍᴀʟᴀʏ',
+        'fil': 'ғɪʟɪᴘɪɴᴏ',
+        'sw': 'sᴡᴀʜɪʟɪ',
+        'am': 'ᴀᴍʜᴀʀɪᴄ',
+        'ta': 'ᴛᴀᴍɪʟ',
+        'te': 'ᴛᴇʟᴜɢᴜ',
+        'mr': 'ᴍᴀʀᴀᴛʜɪ',
+        'gu': 'ɢᴜᴊᴀʀᴀᴛɪ',
+        'kn': 'ᴋᴀɴɴᴀᴅᴀ',
+        'ml': 'ᴍᴀʟᴀʏᴀʟᴀᴍ',
+        'or': 'ᴏᴅɪᴀ',
+        'pa': 'ᴘᴜɴᴊᴀʙɪ',
+        'as': 'ᴀssᴀᴍᴇsᴇ',
+        'mai': 'ᴍᴀɪᴛʜɪʟɪ',
+        'sa': 'sᴀɴsᴋʀɪᴛ',
+        'ne': 'ɴᴇᴘᴀʟɪ',
+        'si': 'sɪɴʜᴀʟᴀ',
+        'my': 'ʙᴜʀᴍᴇsᴇ',
+        'km': 'ᴋʜᴍᴇʀ',
+        'lo': 'ʟᴀᴏ',
+        'bo': 'ᴛɪʙᴇᴛᴀɴ',
+        'ug': 'ᴜʏɢʜᴜʀ',
+        'mn': 'ᴍᴏɴɢᴏʟɪᴀɴ',
+        'dz': 'ᴅᴢᴏɴɢᴋʜᴀ',
+        'ps': 'ᴘᴀsʜᴛᴏ',
+        'ku': 'ᴋᴜʀᴅɪsʜ',
+        'ckb': 'sᴏʀᴀɴɪ',
+        'sd': 'sɪɴᴅʜɪ',
+        'bal': 'ʙᴀʟᴏᴄʜɪ',
+        'brx': 'ʙᴏᴅᴏ',
+        'sat': 'sᴀɴᴛᴀʟɪ',
+        'ks': 'ᴋᴀsʜᴍɪʀɪ',
+        'kok': 'ᴋᴏɴᴋᴀɴɪ',
+        'mni': 'ᴍᴀɴɪᴘᴜʀɪ',
+        'doi': 'ᴅᴏɢʀɪ',
+        'lus': 'ᴍɪᴢᴏ',
+        'npi': 'ɴᴇᴘᴀʟɪ',
     }
-    return language_names.get(code, f"🌐 {code}")
-
-def analyze_audio_content(text):
-    """Analyze text to determine if language detection might be wrong"""
-    # Common Indonesian words
-    indonesian_words = ['yang', 'dan', 'di', 'ke', 'dari', 'untuk', 'ini', 'itu', 
-                       'dengan', 'tidak', 'ada', 'bisa', 'akan', 'sudah', 'kamu',
-                       'saya', 'mereka', 'kita', 'dia', 'aku', 'kalian', 'kami']
-    
-    # Common English words
-    english_words = ['the', 'and', 'to', 'of', 'in', 'that', 'is', 'it', 'for',
-                    'you', 'with', 'on', 'this', 'be', 'are', 'as', 'at', 'from',
-                    'or', 'but', 'not', 'what', 'all', 'were', 'when', 'your',
-                    'can', 'said', 'there', 'use', 'each', 'which', 'she', 'how',
-                    'their', 'will', 'other', 'about', 'out', 'many', 'then',
-                    'them', 'these', 'so', 'some', 'her', 'would', 'make',
-                    'like', 'him', 'into', 'time', 'has', 'look', 'two', 'more',
-                    'write', 'go', 'see', 'number', 'no', 'way', 'could', 'people']
-    
-    text_lower = text.lower()
-    
-    indo_count = sum(1 for word in indonesian_words if word in text_lower)
-    eng_count = sum(1 for word in english_words if word in text_lower)
-    
-    if eng_count > indo_count and eng_count >= 2:
-        return 'en'  # Lebih mirip English
-    elif indo_count > eng_count and indo_count >= 2:
-        return 'id'  # Lebih mirip Indonesian
-    else:
-        return None  # Tidak bisa ditentukan
+    return language_names.get(code, f"ᴜɴᴋɴᴏᴡɴ ({code})")
 
 def convert_audio(input_path, output_path):
     """Convert audio to WAV format using ffmpeg"""
@@ -91,7 +103,6 @@ def convert_audio(input_path, output_path):
             '-ac', '1',  # Mono channel
             '-ar', '16000',  # 16kHz sample rate
             '-acodec', 'pcm_s16le',  # PCM 16-bit
-            '-af', 'highpass=f=300,lowpass=f=3000',  # Filter untuk clarity
             '-y',  # Overwrite output
             output_path
         ]
@@ -116,56 +127,29 @@ def convert_audio(input_path, output_path):
         print(f"ᴀᴜᴅɪᴏ ᴄᴏɴᴠᴇʀsɪᴏɴ ᴇʀʀᴏʀ: {e}")
         return False
 
-def transcribe_audio(audio_path, language_hint=None):
-    """Transcribe audio using Whisper dengan deteksi bahasa yang lebih baik"""
+def transcribe_audio(audio_path):
+    """Transcribe audio using Whisper"""
     if not WHISPER_AVAILABLE:
         raise ImportError("ᴡʜɪsᴘᴇʀ ʟɪʙʀᴀʀʏ ᴛɪᴅᴀᴋ ᴛᴇʀsᴇᴅɪᴀ")
     
     try:
-        # Gunakan model yang lebih akurat untuk deteksi bahasa
-        model = whisper.load_model("small")  # small lebih akurat dari base
+        # Load model (gunakan 'base' untuk kecepatan, 'small' untuk akurasi lebih baik)
+        model = whisper.load_model("base")
         
-        # Parameter transcription
-        transcribe_kwargs = {
-            'task': 'transcribe',
-            'temperature': 0,
-            'fp16': False,
-            'verbose': False,
-            'condition_on_previous_text': False
-        }
-        
-        # Jika ada language hint, gunakan
-        if language_hint and language_hint in ['en', 'id']:
-            transcribe_kwargs['language'] = language_hint
-            transcribe_kwargs['task'] = 'transcribe'
-        
-        # Transcribe
-        result = model.transcribe(audio_path, **transcribe_kwargs)
-        
-        # Cek dan koreksi deteksi bahasa jika perlu
-        detected_lang = result.get('language', 'unknown')
-        text = result['text'].strip()
-        
-        # Analisis konten teks
-        content_analysis = analyze_audio_content(text)
-        
-        # Jika deteksi berbeda dengan analisis konten dan confidence rendah
-        if (content_analysis and 
-            content_analysis != detected_lang and 
-            len(text.split()) >= 3):
-            
-            print(f"⚠ ᴅᴇᴛᴇᴋsɪ ʙᴀʜᴀsᴀ ᴛɪᴅᴀᴋ ᴄᴏᴄᴏᴋ: {detected_lang} -> {content_analysis}")
-            
-            # Coba transcribe ulang dengan bahasa yang diperbaiki
-            transcribe_kwargs['language'] = content_analysis
-            result = model.transcribe(audio_path, **transcribe_kwargs)
-            detected_lang = content_analysis
+        # Transcribe dengan parameter yang dioptimalkan
+        result = model.transcribe(
+            audio_path,
+            task="transcribe",
+            language=None,  # Auto-detect
+            temperature=0,
+            fp16=False,
+            verbose=False
+        )
         
         return {
             'text': result['text'].strip(),
-            'language': detected_lang,
-            'segments': result.get('segments', []),
-            'confidence': '✅' if content_analysis == detected_lang else '⚠'
+            'language': result.get('language', 'unknown'),
+            'segments': result.get('segments', [])
         }
         
     except Exception as e:
@@ -177,9 +161,9 @@ async def safe_edit_message(message, new_text):
     try:
         # Cek apakah teks sudah berbeda
         if hasattr(message, 'message') and message.message == new_text:
-            # Tambahkan spasi tak terlihat (zero-width space) untuk menghindari error
-            zwsp = "​"  # Zero-width space character
-            new_text = new_text.replace("</blockquote>", f"{zwsp}</blockquote>")
+            # Tambahkan karakter unik di akhir untuk menghindari error
+            unique_char = f" [{random.randint(1000, 9999)}]"
+            new_text = new_text.replace("</blockquote>", f"{unique_char}</blockquote>")
         
         await message.edit(new_text, parse_mode='html')
         return True
@@ -227,6 +211,13 @@ def setup(bot, user):
         
         # Variabel untuk tracking progress
         processing_msg = None
+        processing_stages = [
+            "⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...",
+            "📥 ᴍᴇɴɢᴜɴᴅᴜʜ ᴀᴜᴅɪᴏ...",
+            "🔄 ᴍᴇɴɢᴏɴᴠᴇʀsɪ ᴀᴜᴅɪᴏ ғᴏʀᴍᴀᴛ...",
+            "📝 ᴍᴇɴᴛʀᴀɴsᴋʀɪᴘsɪ ᴅᴇɴɢᴀɴ ᴡʜɪsᴘᴇʀ..."
+        ]
+        current_stage = 0
         
         try:
             # Get replied message
@@ -252,29 +243,52 @@ def setup(bot, user):
             
             # Send initial processing message
             processing_msg = await event.reply(
-                "<blockquote>⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...\n"
-                "📥 ᴍᴇɴɢᴜɴᴅᴜʜ ᴀᴜᴅɪᴏ...</blockquote>",
+                f"<blockquote>{processing_stages[current_stage]}</blockquote>",
                 parse_mode='html'
             )
             
-            # Buat temp directory
-            temp_dir = 'vtt_temp'
-            os.makedirs(temp_dir, exist_ok=True)
+            # Gunakan directory yang lebih aman untuk Termux/VPS
+            temp_dirs = [
+                '/tmp',
+                '/data/data/com.termux/files/usr/tmp',
+                os.path.join(os.path.expanduser('~'), 'tmp'),
+                'tmp_vtt'
+            ]
             
-            # Buat unique subdirectory
+            temp_dir = None
+            for dir_path in temp_dirs:
+                try:
+                    if not os.path.exists(dir_path):
+                        os.makedirs(dir_path, exist_ok=True)
+                    # Test write permission
+                    test_file = os.path.join(dir_path, 'test_write.tmp')
+                    with open(test_file, 'w') as f:
+                        f.write('test')
+                    os.remove(test_file)
+                    temp_dir = dir_path
+                    break
+                except:
+                    continue
+            
+            if not temp_dir:
+                # Buat directory di current working directory
+                temp_dir = 'vtt_temp'
+                os.makedirs(temp_dir, exist_ok=True)
+            
+            # Buat unique subdirectory dalam temp_dir
             timestamp = int(time.time())
-            unique_dir = os.path.join(temp_dir, f"vtt_{timestamp}_{random.randint(1000, 9999)}")
+            unique_dir = os.path.join(temp_dir, f"vtt_{timestamp}_{os.getpid()}_{random.randint(1000, 9999)}")
             os.makedirs(unique_dir, exist_ok=True)
             
             original_path = os.path.join(unique_dir, "original.ogg")
             converted_path = os.path.join(unique_dir, "converted.wav")
             
             try:
-                # Download audio file
+                # Stage 1: Download audio file
+                current_stage = 1
                 await safe_edit_message(
                     processing_msg,
-                    "<blockquote>⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...\n"
-                    "📥 ᴍᴇɴɢᴜɴᴅᴜʜ ᴀᴜᴅɪᴏ...</blockquote>"
+                    f"<blockquote>{processing_stages[current_stage]}</blockquote>"
                 )
                 
                 # Download the file
@@ -288,7 +302,7 @@ def setup(bot, user):
                     )
                     return
                 
-                # Check file size
+                # Check file size (minimum 2KB)
                 file_size = os.path.getsize(download_path)
                 if file_size < 2048:
                     await safe_edit_message(
@@ -298,61 +312,54 @@ def setup(bot, user):
                     )
                     return
                 
-                # Convert audio
+                # Stage 2: Convert audio
+                current_stage = 2
                 await safe_edit_message(
                     processing_msg,
-                    "<blockquote>⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...\n"
-                    "🔄 ᴍᴇɴɢᴏɴᴠᴇʀsɪ ᴀᴜᴅɪᴏ...</blockquote>"
+                    f"<blockquote>{processing_stages[current_stage]}</blockquote>"
                 )
                 
                 if not convert_audio(download_path, converted_path):
-                    await safe_edit_message(
-                        processing_msg,
-                        "<blockquote>⚠ ᴇʀʀᴏʀ: ɢᴀɢᴀʟ ᴍᴇɴɢᴏɴᴠᴇʀsɪ ᴀᴜᴅɪᴏ\n"
-                        "📌 ᴘᴀsᴛɪᴋᴀɴ ғғᴍᴘᴇɢ ᴛᴇʀɪɴsᴛᴀʟʟ</blockquote>"
+                    # Coba dengan format lain
+                    converted_path = os.path.join(unique_dir, "converted.mp3")
+                    cmd_mp3 = [
+                        'ffmpeg', '-i', download_path,
+                        '-ac', '1',
+                        '-ar', '16000',
+                        '-y',
+                        converted_path
+                    ]
+                    
+                    result_mp3 = subprocess.run(
+                        cmd_mp3,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
                     )
-                    return
+                    
+                    if result_mp3.returncode != 0:
+                        await safe_edit_message(
+                            processing_msg,
+                            "<blockquote>⚠ ᴇʀʀᴏʀ: ɢᴀɢᴀʟ ᴍᴇɴɢᴏɴᴠᴇʀsɪ ᴀᴜᴅɪᴏ\n"
+                            "📌 ᴘᴀsᴛɪᴋᴀɴ ғғᴍᴘᴇɢ ᴛᴇʀɪɴsᴛᴀʟʟ ᴅᴀɴ ᴛᴇʀsᴇᴅɪᴀ</blockquote>"
+                        )
+                        return
                 
-                # Transcribe audio dengan 2 metode
+                # Stage 3: Transcribe audio
+                current_stage = 3
                 await safe_edit_message(
                     processing_msg,
-                    "<blockquote>⏳ ᴍᴇᴍᴘʀᴏsᴇs ᴠᴏɪᴄᴇ ᴍᴇɴᴊᴀᴅɪ ᴛᴇᴋsᴛ...\n"
-                    "🔍 ᴅᴇᴛᴇᴋsɪ ʙᴀʜᴀsᴀ ᴅᴀɴ ᴛʀᴀɴsᴋʀɪᴘsɪ...</blockquote>"
+                    f"<blockquote>{processing_stages[current_stage]}</blockquote>"
                 )
                 
-                # Coba detect bahasa dulu
-                try:
-                    # Load model untuk detect bahasa
-                    model = whisper.load_model("small")
-                    audio = whisper.load_audio(converted_path)
-                    audio = whisper.pad_or_trim(audio)
-                    
-                    # Buat log-mel spectrogram
-                    mel = whisper.log_mel_spectrogram(audio).to(model.device)
-                    
-                    # Detect bahasa
-                    _, probs = model.detect_language(mel)
-                    detected_lang = max(probs, key=probs.get)
-                    lang_prob = probs[detected_lang]
-                    
-                    print(f"🔍 ᴅᴇᴛᴇᴋsɪ ʙᴀʜᴀsᴀ: {detected_lang} ({lang_prob:.2%})")
-                    
-                except Exception as e:
-                    print(f"ᴅᴇᴛᴇᴋsɪ ʙᴀʜᴀsᴀ ɢᴀɢᴀʟ: {e}")
-                    detected_lang = None
-                
-                # Transcribe dengan atau tanpa hint bahasa
-                if detected_lang and lang_prob > 0.5:  # Confidence > 50%
-                    transcription = transcribe_audio(converted_path, detected_lang)
-                else:
-                    transcription = transcribe_audio(converted_path)
+                transcription = transcribe_audio(converted_path)
                 
                 # Check if transcription is empty
                 if not transcription['text'] or len(transcription['text'].strip()) < 2:
                     await safe_edit_message(
                         processing_msg,
-                        "<blockquote>⚠ ᴇʀʀᴏʀ: ᴛɪᴅᴀᴋ ᴅᴀᴘᴀᴛ ᴍᴇɴɢᴇɴᴀʟɪ ᴛᴇᴋsᴛ\n"
-                        "📌 ᴘᴀsᴛɪᴋᴀɴ ᴀᴜᴅɪᴏ ᴊᴇʟᴀs ᴅᴀɴ ᴛᴇʀᴅᴀᴘᴀᴛ ᴜᴄᴀᴘᴀɴ</blockquote>"
+                        "<blockquote>⚠ ᴇʀʀᴏʀ: ᴛɪᴅᴀᴋ ᴅᴀᴘᴀᴛ ᴍᴇɴɢᴇɴᴀʟɪ ᴛᴇᴋsᴛ ᴅᴀʀɪ ᴀᴜᴅɪᴏ\n"
+                        "📌 ᴘᴀsᴛɪᴋᴀɴ ᴀᴜᴅɪᴏ ᴊᴇʟᴀs, ᴛɪᴅᴀᴋ ʙɪsᴜ, ᴅᴀɴ ᴛᴇʀᴅᴀᴘᴀᴛ ᴜᴄᴀᴘᴀɴ</blockquote>"
                     )
                     return
                 
@@ -371,24 +378,19 @@ def setup(bot, user):
                 lang_code = transcription['language']
                 language_name = get_language_name(lang_code)
                 
-                # Format output dengan informasi deteksi
+                # Format output
                 transcript_text = transcription['text']
                 
-                # Tambahkan catatan jika confidence rendah
-                confidence_note = ""
-                if transcription.get('confidence') == '⚠':
-                    confidence_note = "\n\n📢 ᴄᴀᴛᴀᴛᴀɴ: ᴅᴇᴛᴇᴋsɪ ʙᴀʜᴀsᴀ ᴍᴜɴɢᴋɪɴ ᴋᴜʀᴀɴɢ ᴀᴋᴜʀᴀᴛ"
-                
                 # Split long transcripts
-                if len(transcript_text) > 2500:
-                    transcript_text = transcript_text[:2500] + "...\n[ᴛᴇᴋsᴛ ᴅɪᴘᴏᴛᴏɴɢ - ᴛᴇʀʟᴀʟᴜ ᴘᴀɴᴊᴀɴɢ]"
+                if len(transcript_text) > 3000:
+                    transcript_text = transcript_text[:3000] + "...\n[ᴛʀᴜɴᴄᴀᴛᴇᴅ - ᴛᴇᴋsᴛ ᴛᴇʀʟᴀʟᴜ ᴘᴀɴᴊᴀɴɢ]"
                 
                 output = (
                     f"<blockquote>🎤 ᴠᴏɪᴄᴇ ᴛᴏ ᴛᴇxᴛ\n"
                     f"👤 ᴘᴇɴɢɢᴜɴᴀ: {user_link}\n"
-                    f"🌐 ʙᴀʜᴀsᴀ: {language_name} {transcription.get('confidence', '')}\n\n"
+                    f"📌 ʙᴀʜᴀsᴀ: {language_name}\n\n"
                     f"📝 ᴛʀᴀɴsᴋʀɪᴘsɪ:\n"
-                    f"<code>{transcript_text}</code>{confidence_note}</blockquote>"
+                    f"{transcript_text}</blockquote>"
                 )
                 
                 await safe_edit_message(processing_msg, output)
@@ -398,13 +400,13 @@ def setup(bot, user):
                 await safe_edit_message(
                     processing_msg,
                     f"<blockquote>⚠ ᴇʀʀᴏʀ: {error_msg}\n"
-                    f"📌 ᴄᴏʙᴀ ᴜʟᴀɴɢɪ ᴅᴇɴɢᴀɴ ᴀᴜᴅɪᴏ ʏᴀɴɢ ʟᴇʙɪʜ ᴊᴇʟᴀs</blockquote>"
+                    f"📌 ᴄᴏʙᴀ ᴜʟᴀɴɢɪ ᴏʀ ᴜsᴇ sʜᴏʀᴛᴇʀ ᴀᴜᴅɪᴏ</blockquote>"
                 )
                 print(f"ᴠᴛᴛ ᴇʀʀᴏʀ: {traceback.format_exc()}")
             
             finally:
-                # Cleanup temp files dengan delay
-                await asyncio.sleep(2)
+                # Cleanup temp files dengan delay kecil
+                await asyncio.sleep(1)
                 try:
                     import shutil
                     if os.path.exists(unique_dir):
