@@ -1,304 +1,396 @@
-# vtt.py - Voice To Text untuk Termux
+# plugins/vtt.py
 import os
-import json
-import speech_recognition as sr
-from telethon import events
-from telethon.tl.types import DocumentAttributeAudio
 import tempfile
+import asyncio
+from datetime import datetime
+import json
+from telethon import events
 import subprocess
 from config import OWNER_ID
+import traceback
 
-def is_voice_or_audio(message):
-    """Check if message is voice/audio"""
-    if not message.media:
-        return False
-    
-    if hasattr(message.media, 'document'):
-        # Cek voice message
-        for attr in message.media.document.attributes:
-            if isinstance(attr, DocumentAttributeAudio):
-                if attr.voice:
-                    return True
-        
-        # Cek audio file
-        mime_type = getattr(message.media.document, 'mime_type', '')
-        if mime_type and mime_type.startswith('audio/'):
-            return True
-    
-    return False
+# Cek apakah whisper tersedia
+try:
+    import whisper
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+    print("⚠️ Whisper tidak terinstall. Install dengan: pip install openai-whisper")
 
-def convert_audio_to_flac(input_path, output_path):
-    """Convert audio to FLAC format for speech recognition"""
+def get_prefix():
+    """Get current prefix from config"""
+    try:
+        with open('data/prefix.json', 'r') as f:
+            return json.load(f).get('prefix', '.')
+    except (FileNotFoundError, json.JSONDecodeError):
+        os.makedirs('data', exist_ok=True)
+        with open('data/prefix.json', 'w') as f:
+            json.dump({'prefix': '.'}, f)
+        return '.'
+
+def get_language_name(code):
+    """Convert language code to readable name"""
+    language_names = {
+        'en': 'English',
+        'id': 'Indonesian',
+        'ar': 'Arabic',
+        'es': 'Spanish',
+        'fr': 'French',
+        'de': 'German',
+        'pt': 'Portuguese',
+        'ru': 'Russian',
+        'zh': 'Chinese',
+        'ja': 'Japanese',
+        'ko': 'Korean',
+        'hi': 'Hindi',
+        'it': 'Italian',
+        'tr': 'Turkish',
+        'nl': 'Dutch',
+        'pl': 'Polish',
+        'vi': 'Vietnamese',
+        'th': 'Thai',
+        'fa': 'Persian',
+        'ur': 'Urdu',
+        'he': 'Hebrew',
+        'bn': 'Bengali',
+        'ms': 'Malay',
+        'fil': 'Filipino',
+        'sw': 'Swahili',
+        'am': 'Amharic',
+        'ta': 'Tamil',
+        'te': 'Telugu',
+        'mr': 'Marathi',
+        'gu': 'Gujarati',
+        'kn': 'Kannada',
+        'ml': 'Malayalam',
+        'or': 'Odia',
+        'pa': 'Punjabi',
+        'as': 'Assamese',
+        'mai': 'Maithili',
+        'sa': 'Sanskrit',
+        'ne': 'Nepali',
+        'si': 'Sinhala',
+        'my': 'Burmese',
+        'km': 'Khmer',
+        'lo': 'Lao',
+        'bo': 'Tibetan',
+        'ug': 'Uyghur',
+        'mn': 'Mongolian',
+        'dz': 'Dzongkha',
+        'ps': 'Pashto',
+        'ku': 'Kurdish',
+        'ckb': 'Sorani',
+        'sd': 'Sindhi',
+        'bal': 'Balochi',
+        'brx': 'Bodo',
+        'sat': 'Santali',
+        'ks': 'Kashmiri',
+        'kok': 'Konkani',
+        'mni': 'Manipuri',
+        'doi': 'Dogri',
+        'lus': 'Mizo',
+        'npi': 'Nepali',
+    }
+    return language_names.get(code, f"Unknown ({code})")
+
+def convert_audio(input_path, output_path):
+    """Convert audio to WAV format using ffmpeg"""
     try:
         cmd = [
-            'ffmpeg',
-            '-i', input_path,
-            '-ac', '1',           # Mono channel
-            '-ar', '16000',       # 16kHz sample rate
-            '-acodec', 'flac',    # FLAC codec
-            '-compression_level', '5',  # Medium compression
-            '-y',                 # Overwrite output
+            'ffmpeg', '-i', input_path,
+            '-ac', '1',  # Mono channel
+            '-ar', '16000',  # 16kHz sample rate
+            '-acodec', 'pcm_s16le',  # PCM 16-bit
+            '-y',  # Overwrite output
             output_path
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
         
         if result.returncode != 0:
-            # Fallback: try WAV format
-            wav_path = output_path.replace('.flac', '.wav')
-            cmd_wav = [
-                'ffmpeg',
-                '-i', input_path,
-                '-ac', '1',
-                '-ar', '16000',
-                '-acodec', 'pcm_s16le',
-                '-y',
-                wav_path
-            ]
-            
-            result_wav = subprocess.run(cmd_wav, capture_output=True, text=True, timeout=30)
-            if result_wav.returncode == 0:
-                return wav_path
-            else:
-                raise Exception(f"FFmpeg error: {result.stderr[:200]}")
+            print(f"FFmpeg error: {result.stderr}")
+            return False
         
-        return output_path
-    except subprocess.TimeoutExpired:
-        raise Exception("Audio conversion timeout")
+        # Verify output file exists and has content
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            return True
+        return False
+        
     except Exception as e:
-        raise Exception(f"Conversion error: {str(e)}")
+        print(f"Audio conversion error: {e}")
+        return False
 
-def recognize_speech_multilingual(audio_path):
-    """Recognize speech from audio file in multiple languages automatically"""
-    recognizer = sr.Recognizer()
+def transcribe_audio(audio_path):
+    """Transcribe audio using Whisper"""
+    if not WHISPER_AVAILABLE:
+        raise ImportError("Whisper library tidak tersedia")
     
     try:
-        with sr.AudioFile(audio_path) as source:
-            # Adjust for ambient noise
-            recognizer.adjust_for_ambient_noise(source, duration=0.5)
-            
-            # Record the audio
-            audio_data = recognizer.record(source)
-            
-            # Try English first (most common)
-            try:
-                text = recognizer.recognize_google(
-                    audio_data, 
-                    language='en-US',
-                    show_all=False
-                )
-                detected_lang = "English"
-                return text.strip(), detected_lang
-            except sr.UnknownValueError:
-                pass
-            except sr.RequestError:
-                pass
-            
-            # Try Indonesian
-            try:
-                text = recognizer.recognize_google(
-                    audio_data, 
-                    language='id-ID',
-                    show_all=False
-                )
-                detected_lang = "Indonesia"
-                return text.strip(), detected_lang
-            except sr.UnknownValueError:
-                pass
-            except sr.RequestError:
-                pass
-            
-            # Try Japanese
-            try:
-                text = recognizer.recognize_google(
-                    audio_data, 
-                    language='ja-JP',
-                    show_all=False
-                )
-                detected_lang = "Japanese"
-                return text.strip(), detected_lang
-            except sr.UnknownValueError:
-                pass
-            except sr.RequestError:
-                pass
-            
-            # Try Korean
-            try:
-                text = recognizer.recognize_google(
-                    audio_data, 
-                    language='ko-KR',
-                    show_all=False
-                )
-                detected_lang = "Korean"
-                return text.strip(), detected_lang
-            except sr.UnknownValueError:
-                pass
-            except sr.RequestError:
-                pass
-            
-            # Try Arabic
-            try:
-                text = recognizer.recognize_google(
-                    audio_data, 
-                    language='ar-SA',
-                    show_all=False
-                )
-                detected_lang = "Arabic"
-                return text.strip(), detected_lang
-            except sr.UnknownValueError:
-                pass
-            except sr.RequestError:
-                pass
-            
-            # Fallback: try without language (auto-detect)
-            try:
-                text = recognizer.recognize_google(
-                    audio_data,
-                    show_all=False
-                )
-                detected_lang = "Auto-detected 🌐"
-                return text.strip(), detected_lang
-            except sr.UnknownValueError:
-                return None, None
-            except sr.RequestError as e:
-                raise Exception(f"Google Speech API error: {str(e)}")
-                
+        # Load model (gunakan 'base' untuk kecepatan, 'small' untuk akurasi lebih baik)
+        model = whisper.load_model("base")
+        
+        # Transcribe dengan parameter yang dioptimalkan
+        result = model.transcribe(
+            audio_path,
+            task="transcribe",
+            language=None,  # Auto-detect
+            temperature=0,
+            fp16=False,
+            verbose=False
+        )
+        
+        return {
+            'text': result['text'].strip(),
+            'language': result.get('language', 'unknown'),
+            'segments': result.get('segments', [])
+        }
+        
     except Exception as e:
-        raise Exception(f"Recognition error: {str(e)}")
+        print(f"Transcription error: {e}")
+        raise
 
 def setup(bot, user):
     
-    # ========== VTT REPLY HANDLER ==========
-    @user.on(events.NewMessage(pattern=r'^vtt$'))
-    async def vtt_reply_handler(event):
-        """Handle vtt command when replying to voice/audio"""
+    @user.on(events.NewMessage())
+    async def vtt_handler(event):
+        """Handle Voice to Text command"""
         if event.sender_id != OWNER_ID:
             return
         
-        # Cek apakah ini reply
+        current_prefix = get_prefix()
+        message = (event.raw_text or '').strip()
+        
+        # Check for .vtt command
+        is_vtt = False
+        
+        if current_prefix == "no" and message.lower() == "vtt":
+            is_vtt = True
+        elif current_prefix != "no" and message.startswith(current_prefix):
+            cmd_text = message[len(current_prefix):].strip().lower()
+            if cmd_text == "vtt":
+                is_vtt = True
+        
+        if not is_vtt:
+            return
+        
+        # Check if replying to a message
         if not event.is_reply:
             await event.reply(
-                "<blockquote>✘ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴠᴏɪᴄᴇ/ᴀᴜᴅɪᴏ ᴍᴇssᴀɢᴇ ᴡɪᴛʜ 'ᴠᴛᴛ'</blockquote>",
+                "<blockquote>✘ ᴇʀʀᴏʀ: ʏᴏᴜ ᴍᴜsᴛ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴠᴏɪᴄᴇ/ᴀᴜᴅɪᴏ ᴍᴇssᴀɢᴇ\n"
+                "✓ ᴜsᴀɢᴇ: ʀᴇᴘʟʏ ᴛᴏ ᴠᴏɪᴄᴇ → .ᴠᴛᴛ</blockquote>",
                 parse_mode='html'
             )
             return
         
-        processing_msg = None
-        
         try:
-            # Ambil pesan yang di-reply
+            # Get replied message
             replied_msg = await event.get_reply_message()
             
-            # Cek apakah itu voice/audio
-            if not is_voice_or_audio(replied_msg):
+            # Check if replied message has voice/audio
+            if not (replied_msg.voice or replied_msg.audio):
                 await event.reply(
-                    "<blockquote>✘ ʀᴇᴘʟɪᴇᴅ ᴍᴇssᴀɢᴇ ɪs ɴᴏᴛ ᴀ ᴠᴏɪᴄᴇ ᴏʀ ᴀᴜᴅɪᴏ ғɪʟᴇ</blockquote>",
+                    "<blockquote>✘ ᴇʀʀᴏʀ: ʀᴇᴘʟɪᴇᴅ ᴍᴇssᴀɢᴇ ɪs ɴᴏᴛ ᴀ ᴠᴏɪᴄᴇ/ᴀᴜᴅɪᴏ\n"
+                    "✓ ᴏɴʟʏ ᴠᴏɪᴄᴇ ᴍᴇssᴀɢᴇs ᴄᴀɴ ʙᴇ ᴛʀᴀɴsᴄʀɪʙᴇᴅ</blockquote>",
                     parse_mode='html'
                 )
                 return
             
-            # Kirim status processing
+            # Check if Whisper is available
+            if not WHISPER_AVAILABLE:
+                await event.reply(
+                    "<blockquote>✘ ᴇʀʀᴏʀ: ᴡʜɪsᴘᴇʀ ʟɪʙʀᴀʀʏ ɴᴏᴛ ɪɴsᴛᴀʟʟᴇᴅ\n"
+                    "✓ ɪɴsᴛᴀʟʟ ᴡɪᴛʜ: ᴘɪᴘ ɪɴsᴛᴀʟʟ ᴏᴘᴇɴᴀɪ-ᴡʜɪsᴘᴇʀ</blockquote>",
+                    parse_mode='html'
+                )
+                return
+            
+            # Send processing message
             processing_msg = await event.reply(
-                "<blockquote>⛧ ᴄᴏɴᴠᴇʀᴛɪɴɢ ᴠᴏɪᴄᴇ ᴛᴏ ᴛᴇxᴛ...\n✘ ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ</blockquote>",
+                "<blockquote>⛧ ᴘʀᴏᴄᴇssɪɴɢ ᴠᴏɪᴄᴇ ᴍᴇssᴀɢᴇ...\n"
+                "✓ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴀᴜᴅɪᴏ...</blockquote>",
                 parse_mode='html'
             )
             
-            # Buat temporary directory
-            temp_dir = tempfile.mkdtemp(dir='/data/data/com.termux/files/usr/tmp')
+            # Gunakan directory yang lebih aman untuk Termux/VPS
+            # Coba beberapa lokasi yang umum
+            temp_dirs = [
+                '/tmp',
+                '/data/data/com.termux/files/usr/tmp',
+                os.path.join(os.path.expanduser('~'), 'tmp'),
+                'tmp_vtt'
+            ]
             
-            # Download audio
-            audio_path = os.path.join(temp_dir, 'audio.ogg')
-            await event.client.download_media(replied_msg, audio_path)
+            temp_dir = None
+            for dir_path in temp_dirs:
+                try:
+                    if not os.path.exists(dir_path):
+                        os.makedirs(dir_path, exist_ok=True)
+                    # Test write permission
+                    test_file = os.path.join(dir_path, 'test_write.tmp')
+                    with open(test_file, 'w') as f:
+                        f.write('test')
+                    os.remove(test_file)
+                    temp_dir = dir_path
+                    break
+                except:
+                    continue
             
-            # Convert to FLAC
-            flac_path = os.path.join(temp_dir, 'audio.flac')
-            converted_path = convert_audio_to_flac(audio_path, flac_path)
+            if not temp_dir:
+                # Buat directory di current working directory
+                temp_dir = 'vtt_temp'
+                os.makedirs(temp_dir, exist_ok=True)
             
-            # Convert speech to text with auto language detection
-            text, detected_lang = recognize_speech_multilingual(converted_path)
+            # Buat unique subdirectory dalam temp_dir
+            timestamp = int(time.time())
+            unique_dir = os.path.join(temp_dir, f"vtt_{timestamp}_{os.getpid()}")
+            os.makedirs(unique_dir, exist_ok=True)
             
-            # Cleanup temporary files
+            original_path = os.path.join(unique_dir, "original.ogg")
+            converted_path = os.path.join(unique_dir, "converted.wav")
+            
             try:
-                if os.path.exists(audio_path):
-                    os.remove(audio_path)
-                if os.path.exists(converted_path):
-                    os.remove(converted_path)
-                if os.path.exists(temp_dir):
-                    os.rmdir(temp_dir)
-            except:
-                pass
-            
-            if not text:
+                # Download audio file
                 await processing_msg.edit(
-                    "<blockquote>✘ ᴄᴏᴜʟᴅ ɴᴏᴛ ᴜɴᴅᴇʀsᴛᴀɴᴅ ᴛʜᴇ ᴀᴜᴅɪᴏ\n⛧ ᴍᴀᴋᴇ sᴜʀᴇ ᴛʜᴇ ᴀᴜᴅɪᴏ ɪs ᴄʟᴇᴀʀ</blockquote>",
+                    "<blockquote>⛧ ᴘʀᴏᴄᴇssɪɴɢ ᴠᴏɪᴄᴇ ᴍᴇssᴀɢᴇ...\n"
+                    "✓ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴀᴜᴅɪᴏ...</blockquote>",
                     parse_mode='html'
                 )
-                return
+                
+                # Download the file dengan progress
+                download_path = await replied_msg.download_media(file=original_path)
+                
+                if not download_path or not os.path.exists(download_path):
+                    await processing_msg.edit(
+                        "<blockquote>✘ ᴇʀʀᴏʀ: ғᴀɪʟᴇᴅ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ ᴀᴜᴅɪᴏ\n"
+                        "✓ ᴄʜᴇᴄᴋ ɪɴᴛᴇʀɴᴇᴛ ᴄᴏɴɴᴇᴄᴛɪᴏɴ</blockquote>",
+                        parse_mode='html'
+                    )
+                    return
+                
+                # Check file size (minimum 2KB)
+                file_size = os.path.getsize(download_path)
+                if file_size < 2048:
+                    await processing_msg.edit(
+                        f"<blockquote>✘ ᴇʀʀᴏʀ: ᴀᴜᴅɪᴏ ғɪʟᴇ ɪs ᴛᴏᴏ sᴍᴀʟʟ ({file_size} ʙʏᴛᴇs)\n"
+                        "✓ ᴍɪɴɪᴍᴜᴍ sɪᴢᴇ: 2ᴋʙ</blockquote>",
+                        parse_mode='html'
+                    )
+                    return
+                
+                # Convert audio
+                await processing_msg.edit(
+                    "<blockquote>⛧ ᴘʀᴏᴄᴇssɪɴɢ ᴠᴏɪᴄᴇ ᴍᴇssᴀɢᴇ...\n"
+                    "✓ ᴄᴏɴᴠᴇʀᴛɪɴɢ ᴀᴜᴅɪᴏ ғᴏʀᴍᴀᴛ...</blockquote>",
+                    parse_mode='html'
+                )
+                
+                if not convert_audio(download_path, converted_path):
+                    # Coba dengan format lain
+                    converted_path = os.path.join(unique_dir, "converted.mp3")
+                    cmd_mp3 = [
+                        'ffmpeg', '-i', download_path,
+                        '-ac', '1',
+                        '-ar', '16000',
+                        '-y',
+                        converted_path
+                    ]
+                    
+                    result_mp3 = subprocess.run(
+                        cmd_mp3,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    
+                    if result_mp3.returncode != 0:
+                        await processing_msg.edit(
+                            "<blockquote>✘ ᴇʀʀᴏʀ: ғᴀɪʟᴇᴅ ᴛᴏ ᴄᴏɴᴠᴇʀᴛ ᴀᴜᴅɪᴏ\n"
+                            "✓ ᴍᴀᴋᴇ sᴜʀᴇ ғғᴍᴘᴇɢ ɪs ɪɴsᴛᴀʟʟᴇᴅ</blockquote>",
+                            parse_mode='html'
+                        )
+                        return
+                
+                # Transcribe audio
+                await processing_msg.edit(
+                    "<blockquote>⛧ ᴘʀᴏᴄᴇssɪɴɢ ᴠᴏɪᴄᴇ ᴍᴇssᴀɢᴇ...\n"
+                    "✓ ᴛʀᴀɴsᴄʀɪʙɪɴɢ ᴡɪᴛʜ ᴡʜɪsᴘᴇʀ...</blockquote>",
+                    parse_mode='html'
+                )
+                
+                transcription = transcribe_audio(converted_path)
+                
+                # Check if transcription is empty
+                if not transcription['text'] or len(transcription['text'].strip()) < 2:
+                    await processing_msg.edit(
+                        "<blockquote>✘ ᴇʀʀᴏʀ: ɴᴏ ᴛᴇxᴛ ᴅᴇᴛᴇᴄᴛᴇᴅ ɪɴ ᴀᴜᴅɪᴏ\n"
+                        "✓ ᴛʜᴇ ᴀᴜᴅɪᴏ ᴍᴀʏ ʙᴇ ᴛᴏᴏ sʜᴏʀᴛ, sɪʟᴇɴᴛ, ᴏʀ ɴᴏɪsʏ</blockquote>",
+                        parse_mode='html'
+                    )
+                    return
+                
+                # Get user info
+                sender = replied_msg.sender
+                user_name = getattr(sender, 'first_name', '') or 'User'
+                if hasattr(sender, 'last_name') and sender.last_name:
+                    user_name += f" {sender.last_name}"
+                
+                if hasattr(sender, 'username') and sender.username:
+                    user_link = f'<a href="https://t.me/{sender.username}">{user_name}</a>'
+                else:
+                    user_link = user_name
+                
+                # Get language name
+                lang_code = transcription['language']
+                language_name = get_language_name(lang_code)
+                
+                # Format output
+                transcript_text = transcription['text']
+                
+                # Split long transcripts
+                if len(transcript_text) > 3000:
+                    transcript_text = transcript_text[:3000] + "...\n[ᴛʀᴜɴᴄᴀᴛᴇᴅ - ᴛᴇxᴛ ᴛᴏᴏ ʟᴏɴɢ]"
+                
+                output = (
+                    f"<blockquote>✞ ᴠᴏɪᴄᴇ ᴛᴏ ᴛᴇxᴛ\n"
+                    f"⛧ ғʀᴏᴍ: {user_link}\n"
+                    f"✓ ʟᴀɴɢ: {language_name}\n\n"
+                    f"✘ ᴛʀᴀɴsᴄʀɪᴘᴛɪᴏɴ:\n"
+                    f"{transcript_text}</blockquote>"
+                )
+                
+                await processing_msg.edit(output, parse_mode='html')
+                
+            except Exception as e:
+                error_msg = str(e)[:200]
+                await processing_msg.edit(
+                    f"<blockquote>✘ ᴇʀʀᴏʀ: {error_msg}\n"
+                    f"✓ ᴛʀʏ ᴀɢᴀɪɴ ᴏʀ ᴜsᴇ sʜᴏʀᴛᴇʀ ᴀᴜᴅɪᴏ</blockquote>",
+                    parse_mode='html'
+                )
+                print(f"VTT Error: {traceback.format_exc()}")
             
-            # Get sender info
-            sender = await replied_msg.get_sender()
-            user_name = "Unknown"
-            if sender:
-                first_name = getattr(sender, 'first_name', '') or ''
-                last_name = getattr(sender, 'last_name', '') or ''
-                user_name = f"{first_name} {last_name}".strip()
-                if not user_name:
-                    user_name = getattr(sender, 'username', 'Unknown')
-            
-            # Format hasil dengan HTML quote block
-            result = (
-                f"<blockquote>✞ <b>ᴠᴏɪᴄᴇ ᴛᴏ ᴛᴇxᴛ</b>\n"
-                f"⛧ ғʀᴏᴍ: {user_name}\n"
-                f"✓ ʟᴀɴɢ: {detected_lang}\n\n"
-                f"✘ ᴛʀᴀɴsᴄʀɪᴘᴛɪᴏɴ:\n<b>{text}</b></blockquote>"
-            )
-            
-            await processing_msg.edit(result, parse_mode='html')
-            
-            # Hapus pesan "vtt" user
-            try:
-                await event.delete()
-            except:
-                pass
-            
-        except Exception as e:
-            error_msg = f"<blockquote>✘ ᴇʀʀᴏʀ: {str(e)[:150]}</blockquote>"
-            if processing_msg:
+            finally:
+                # Cleanup temp files
                 try:
-                    await processing_msg.edit(error_msg, parse_mode='html')
+                    import shutil
+                    if os.path.exists(unique_dir):
+                        shutil.rmtree(unique_dir, ignore_errors=True)
                 except:
-                    await event.reply(error_msg, parse_mode='html')
-            else:
-                await event.reply(error_msg, parse_mode='html')
-    
-    # ========== VTT INFO COMMAND ==========
-    @user.on(events.NewMessage(pattern=r'^\.vttinfo$'))
-    async def vtt_info_handler(event):
-        """Show vtt info"""
-        if event.sender_id != OWNER_ID:
-            return
-        
-        # Check if ffmpeg is available
-        try:
-            ffmpeg_result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True)
-            ffmpeg_ok = ffmpeg_result.returncode == 0
-        except:
-            ffmpeg_ok = False
-        
-        info_text = (
-            f"<blockquote>⛧ <b>ᴠᴏɪᴄᴇ ᴛᴏ ᴛᴇxᴛ ɪɴғᴏ</b>\n\n"
-            f"✘ <b>ᴍᴏᴅᴇ:</b> ᴀᴜᴛᴏ-ᴅᴇᴛᴇᴄᴛ 🌐\n"
-            f"✞ <b>sᴜᴘᴘᴏʀᴛᴇᴅ ʟᴀɴɢᴜᴀɢᴇs:</b>\n"
-            f"  • English 🇺🇸\n"
-            f"  • Bahasa Indonesia 🇮🇩\n"
-            f"  • Japanese 🇯🇵\n"
-            f"  • Korean 🇰🇷\n"
-            f"  • Arabic 🇸🇦\n\n"
-            f"✓ <b>ᴅᴇᴘᴇɴᴅᴇɴᴄɪᴇs:</b>\n"
-            f"  • FFmpeg: {'✓ Available' if ffmpeg_ok else '✘ Not Found'}\n"
-            f"  • SpeechRecognition: ✓ Available\n\n"
-            f"✘ <b>ᴜsᴀɢᴇ:</b> Reply to voice/audio with <code>vtt</code>\n"
-            f"⛧ <b>ɴᴏᴛᴇ:</b> ᴛʜᴇ sʏsᴛᴇᴍ ᴡɪʟʟ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ ᴅᴇᴛᴇᴄᴛ ᴛʜᴇ ʟᴀɴɢᴜᴀɢᴇ!</blockquote>"
-        )
-        
-        await event.reply(info_text, parse_mode='html')
+                    pass
+                
+        except Exception as e:
+            error_msg = str(e)[:200]
+            await event.reply(
+                f"<blockquote>✘ ᴜɴᴇxᴘᴇᴄᴛᴇᴅ ᴇʀʀᴏʀ: {error_msg}\n"
+                f"✓ ᴄᴏɴᴛᴀᴄᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ</blockquote>",
+                parse_mode='html'
+            )
+            print(f"VTT Main Error: {traceback.format_exc()}")
+
+# Perbaikan: Tambahkan import time yang hilang
+import time
