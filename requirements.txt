@@ -1,0 +1,19 @@
+# requirements.txt untuk Userbot Termux
+
+# ========== TELEGRAM CLIENT ==========
+telethon
+
+# ========== AUDIO PROCESSING ==========
+SpeechRecognition
+pydub
+
+# ========== ASYNC & NETWORK ==========
+aiohttp
+aiofiles
+
+# ========== IMAGE PROCESSING ==========
+Pillow
+
+# ========== UTILITIES ==========
+python-dateutil
+pytz
